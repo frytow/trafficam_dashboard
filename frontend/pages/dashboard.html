@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link rel="apple-touch-icon" sizes="76x76" href="../assets/img/apple-icon.png">
+  <link rel="icon" type="image/png" href="../img/traficam_logo_net_only_logo.png">
+  <title>
+    control center
+  </title>
+  <!-- my style  -->
+   <link rel="stylesheet" type="text/css" href="../css/my_css/style_my_style.css">
+  <!-- Fonts and icons -->
+  <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700,900" />
+  <!-- Nucleo Icons -->
+  <link href="../css/nucleo-icons.css" rel="stylesheet" />
+  <link href="../css/nucleo-svg.css" rel="stylesheet" />
+  <!-- Open Street Map Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Font Awesome Icons -->
+  <script src="https://kit.fontawesome.com/42d5adcbca.js" crossorigin="anonymous"></script>
+  <!-- Material Icons -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <!-- CSS Files -->
+  <link id="pagestyle" href="../css/material-dashboard.css?v=3.2.0" rel="stylesheet" />
+  <!-- font -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+
+<body class="g-sidenav-show  bg-gray-100">
+  <!----------------------- Side Menu ------------------------>
+  <aside class="sidenav navbar navbar-vertical navbar-expand-xs border-radius-0  ms-0 bg-white my-0" id="sidenav-main" style="width: 75px ;">
+    <div class="sidenav-header">
+      <i class="fas fa-times p-3 cursor-pointer text-dark opacity-5 position-absolute end-0 top-0 d-none d-xl-none" aria-hidden="true" id="iconSidenav"></i>
+      <a class="navbar-brand p-2 m-2 d-flex justify-content-center" href="#" target="_blank">
+        <img src="../img/traficam_logo_net.png" class="navbar-brand-img" width="40" height="40" alt="main_logo">
+      </a>
+    </div>
+    <hr class="horizontal dark mt-0 mb-2 mx-2">
+    <div class="collapse navbar-collapse w-auto" id="sidenav-collapse-main">
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <a class="nav-link active bg-gradient-dark text-white p-3 d-flex justify-content-center" title="dashboard" href="../pages/dashboard.html">
+            <i class="material-symbols-rounded opacity-5">dashboard</i>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link text-dark p-3 d-flex justify-content-center" title="data base" href="../pages/tables.html">
+            <i class="material-symbols-rounded opacity-5">table_view</i>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link text-dark p-3 d-flex justify-content-center" title="Statistics" href="../pages/statistiques.html">
+            <i class="material-symbols-rounded opacity-5">show_chart</i>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link text-dark p-3 d-flex justify-content-center" title="notifications" href="../pages/notifications.html">
+            <i class="material-symbols-rounded opacity-5">notifications</i>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="main-content position-relative max-height-vh-100 h-100 border-radius-lg ">
+    <div class="container-fluid py-2">
+      <div class="container">
+        <div class="row" style="padding-bottom: 10px;">
+          <div class="col-xl-3 col-sm-6 mb-xl-0 mb-4">
+            <div class="card">
+              <div class="card-header p-2 ps-3">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <p class="text-sm mb-0 text-capitalize">Density vh/km</p>
+                    <div id="vehicle_present" class="d-flex mt-1 gap-3 small">
+                      <!-- densitys will be injected here -->
+                    </div>
+                  </div>
+                  <div class="icon icon-md icon-shape bg-gradient-dark shadow-dark shadow text-center border-radius-lg">
+                    <i class="material-symbols-rounded opacity-10">directions_car</i>
+                  </div>
+                </div>
+              </div>
+              <hr class="dark horizontal my-0">
+              <div class="card-footer p-2 ps-3">
+                <p class="mb-0 text-sm" id="density-footer"><span class="text-success font-weight-bolder">25% </span>density</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-3 col-sm-6 mb-xl-0 mb-4">
+            <div class="card">
+              <div class="card-header p-2 ps-3">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <p class="text-sm mb-0 text-capitalize">AVG speed Km/h</p>
+                    <div id="speeds_container" class="d-flex mt-1 gap-4 small">
+                      <!-- Speeds will be injected here -->
+                    </div>
+                  </div>
+                  <div class="icon icon-md icon-shape bg-gradient-dark shadow-dark shadow text-center border-radius-lg">
+                    <i class="material-symbols-rounded opacity-10">speed</i>
+                  </div>
+                </div>
+              </div>
+              <hr class="dark horizontal my-0">
+              <div class="card-footer p-2 ps-3">
+                <p class="mb-0 text-sm" id="flow-footer"><span class="text-success font-weight-bolder">smooth </span>traffic flow</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-3 col-sm-6 mb-xl-0 mb-4">
+            <div class="card">
+              <div class="card-header p-2 ps-3">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <p class="text-sm mb-0 text-capitalize">Passed vehicles</p>
+                    <div id="lanes_container" class="d-flex mt-1 gap-4 small">
+                      <!-- Lanes will be injected here -->
+                    </div>
+                  </div>
+                  <div class="icon icon-md icon-shape bg-gradient-dark shadow-dark shadow text-center border-radius-lg">
+                    <i class="material-symbols-rounded opacity-10">traffic</i>
+                  </div>
+                </div>
+              </div>
+              <hr class="dark horizontal my-0">
+              <div class="card-footer p-2 ps-3">
+                <p class="mb-0 text-sm" id="activity-footer"><span class="text-danger font-weight-bolder">Active </span>area today</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-3 col-sm-6 mb-xl-0 mb-4">
+            <div class="card">
+              <div class="card-header p-2 ps-3">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <p class="text-sm mb-0 text-capitalize">Traffic jams alerts</p>
+                    <div id="alerts_container" class="d-flex mt-1 gap-4 small">
+                      <!-- Alerts will be injected here -->
+                    </div>
+                  </div>
+                  <div class="icon icon-md icon-shape bg-gradient-dark shadow-dark shadow text-center border-radius-lg">
+                    <i class="material-symbols-rounded opacity-10">campaign</i>
+                  </div>
+                </div>
+              </div>
+              <hr class="dark horizontal my-0">
+              <div class="card-footer p-2 ps-3 px-2 d-flex justify-content-between align-items-center">
+                <div id="alerts-count">
+
+                </div>
+                <a onclick="viewAllNotifications()" class="mb-0 text-sm text-danger font-weight-bolder">View all</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-sections">
+          <!-- Map Section -->
+          <div class="map-section">
+            <div class="card" id="map-card">
+              <div class="card-body p-0">
+                <div id="map"></div>
+              </div>
+            </div>
+          </div>
+      
+          <!-- navigation Section -->
+          <div class="orders-section" >
+            <div class="card h-100 py-2">
+                <div class="card-header pb-0">
+                    <h6>Node & Intersection</h6>
+                    <p class="text-sm">
+                        <span class="font-weight-bold" id="intersection-name">Loading...</span>
+                    </p>
+                    <div class="pe-2 mt-2" style="width: 110px;">  
+                      <select id="governorateSelect" class="form-select form-select-sm border-radius-lg" aria-label="governorate" style="height: calc(1.8125rem + 8px);">
+                        <option selected value="bardo">Tunis</option>
+                        <option value="manouba">Manouba</option>
+                        <option value="ben arous">Ben Arous</option>
+                        <option value="nabeul">Nabeul</option>
+                        <option value="benzart">Benzart</option>
+                        <option value="sousse">Sousse</option>
+                        <option value="sfax">Sfax</option>
+                      </select>
+                    </div>
+                </div>
+                <hr class="dark horizontal mt-4 mb-2">
+                <div class="card-body p-3">
+                    <div class="timeline-one-side" id="traffic-details">
+                      <div class="timeline-block mb-3">
+                        <span class="timeline-step">
+                          <img src="../img/cctv.png" width="21" height="21" alt="">
+                        </span>
+                        <div class="timeline-content">
+                          <h6 class="text-dark text-xs font-weight-bold mb-0">Cameras</h6>
+                          <p class="text-secondary font-weight-bold text-xs mt-1 mb-0" id="cam-number">Loading...</p>
+                        </div>
+                      </div>
+                      <div class="timeline-block mb-3">
+                          <span class="timeline-step">
+                            <img src="../img/lanes.png" width="23" height="23" alt="">
+                          </span>
+                          <div class="timeline-content">
+                              <h6 class="text-dark text-xs font-weight-bold mb-0">Lanes</h6>
+                              <p class="text-secondary font-weight-bold text-xs mt-1 mb-0" id="lanes-number">Loading...</p>
+                          </div>
+                      </div>
+                      <div class="timeline-block mb-3">
+                        <span class="timeline-step">
+                          <img src="../img/traffic.png" width="23" height="23" alt="">
+                        </span>
+                        <div class="timeline-content">
+                            <h6 class="text-dark text-xs font-weight-bold mb-0">capacity</h6>
+                            <p class="text-secondary font-weight-bold text-xs mt-1 mb-0" id="capacity">Loading...</p>
+                        </div>
+                    </div>
+                    </div>
+                    <hr class="dark horizontal my-2">
+                    <div class="pt-2 pb-3 px-2">
+                      <a class="" title="Streams" href="#" id="openModalBtn">
+                        <button class="btn btn-sm bg-gradient-dark px-3 py-2">Stream</button>
+                      </a>
+                      
+                      <div class="col-lg-3 col-sm-6 col-12 mt-lg-0 mt-2">
+                        <a class="" title="Statistics" href="#" id="openStatsModalBtn">
+                          <button class="btn btn-sm bg-gradient-info px-3 py-2" data-bs-toggle="modal" data-bs-target="#chartModal">Statistics</button>
+                        </a>
+                      </div>
+
+                      <!-- Clock -->
+                      <div class="d-flex align-items-center mt-3 ms-2">
+                        <h6 class="text-dark text-sm font-weight-bold mb-0 me-2">Current Time:</h6>
+                        <p id="live-clock" class="text-secondary font-weight-bold text-sm mb-0">--:--:--</p>
+                      </div>                      
+                    </div>
+                </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- notifications -->
+      <div class="position-fixed bottom-1 end-1 z-index-2" style="z-index: 50;">
+        <!-- Traffic jam notification -->
+        <div class="toast fade hide p-2 mt-2 alert-danger" role="alert" aria-live="assertive" id="dangerToast" aria-atomic="true">
+            <div class="toast-header border-0 alert-danger">
+                <i class="material-symbols-rounded text-white me-2">
+                    campaign
+                </i>
+                <span class="me-auto text-white font-weight-bold">Traffic jam</span>
+                <small class="text-white">Now</small>
+                <i class="fas fa-times text-white text-md ms-3 cursor-pointer" data-bs-dismiss="toast" aria-label="Close"></i>
+            </div>
+            <hr class="horizontal light m-0">
+            <div class="toast-body text-white">
+            </div>
+        </div>
+        <!-- New/updated node notification -->
+        <div class="toast fade hide p-2 mt-2 bg-gradient-info" style="z-index: 50;" role="alert" aria-live="assertive" id="nodeToast" aria-atomic="true">
+            <div class="toast-header border-0 bg-gradient-info">
+                <i class="material-symbols-rounded text-white me-2">
+                    add_location
+                </i>
+                <span class="me-auto text-white font-weight-bold">Node Update</span>
+                <small class="text-white">Now</small>
+                <i class="fas fa-times text-white text-md ms-3 cursor-pointer" data-bs-dismiss="toast" aria-label="Close"></i>
+            </div>
+            <hr class="horizontal light m-0">
+            <div class="toast-body text-white">
+            </div>
+        </div>
+      </div>
+      <!-- end_notifications -->
+    </div>
+  </main>
+
+  <!-- stream Modal-->
+
+  <div class="modal fade" id="streamModal" tabindex="-1" aria-labelledby="streamModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header px-4">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="modal-title" id="streamModalLabel">Live Stream</h6>
+              <p id="stream_intersection_name">the intersection name here , address</p>
+            </div>
+            <select id="cameraSelector" class="form-select form-select-sm border-radius-lg w-auto ms-5">
+              <option value="" disabled selected>Select a camera</option>
+            </select>            
+          </div>
+          <img src="../img/close.png" id="modalCloseBtn" data-bs-dismiss="modal" aria-label="Close" alt="">
+        </div>
+        <div class="modal-body">
+          <!-- Stream content goes here -->
+          <div class="ratio ratio-16x9">
+            <iframe src="" title="Stream Preview" allowfullscreen id="streamFrame"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- alert pressing the stream button while not selecting node -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="streamToast" class="toast align-items-center text-bg-warning border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body">
+          Please select a node before opening the stream.
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  
+<!-- Modal -->
+<div class="modal fade" id="chartModal" tabindex="-1" aria-labelledby="chartModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h6 class="modal-title" id="statsModalLabel">Statistics</h6>
+          <p id="stats_stream_intersection_name">the intersection name here , address</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+
+        <div class="d-flex justify-content-center">
+          <div class="card">
+            <div class="card-body">
+              <h6 class="mb-0">Daily Traffic</h6>
+              <p class="text-sm">Average daily density</p>
+              <div class="pe-2">
+                <div class="chart" style="max-width: 600px; margin: auto;">
+                  <canvas id="chart-bars" class="chart-canvas" height="170"></canvas>
+                </div>
+              </div>
+              <hr class="dark horizontal">
+              <div class="d-flex">
+                <i class="material-symbols-rounded text-sm my-auto me-1">schedule</i>
+                <p class="mb-0 text-sm">last days</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!--   Core JS Files   -->
+  <script src="../js/core/popper.min.js"></script>
+  <script src="../js/core/bootstrap.min.js"></script>
+  <script src="../js/plugins/perfect-scrollbar.min.js"></script>
+  <script src="../js/plugins/smooth-scrollbar.min.js"></script>
+  <script src="../js/plugins/chartjs.min.js"></script>
+
+  <script src="../js/my_scripts/map_v3.js"></script>
+
+  <script>
+    var win = navigator.platform.indexOf('Win') > -1;
+    if (win && document.querySelector('#sidenav-scrollbar')) {
+      var options = {
+        damping: '0.5'
+      }
+      Scrollbar.init(document.querySelector('#sidenav-scrollbar'), options);
+    }
+  </script>
+
+<script>
+  document.getElementById("governorateSelect").addEventListener("change", function() {
+      let selectedGovernorate = this.options[this.selectedIndex].value; // Get selected governorate name
+
+      // Use Nominatim API to get coordinates
+      let url = `https://nominatim.openstreetmap.org/search?format=json&q=${selectedGovernorate}, Tunisia`;
+
+      fetch(url)
+          .then(response => response.json())
+          .then(data => {
+              if (data.length > 0) {
+                  let lat = data[0].lat;
+                  let lon = data[0].lon;
+                  map.setView([lat, lon], 12); // Move map to new location
+              } else {
+                  console.error("Location not found!");
+              }
+          })
+          .catch(error => console.error("Error fetching location:", error));
+  });
+</script>
+
+  <!-- Github buttons -->
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+  <script src="../js/material-dashboard.min.js?v=3.2.0"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93b935a92e6c456b',t:'MTc0NjU0MjE4My4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+
+</html>
