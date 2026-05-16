@@ -168,7 +168,11 @@ Service 4: Alert Engine
 - ✅ Accident reporting
 - ✅ Driving score
 - **Output:** Mobile app ready for testing
-
+### Dashboard feature : Dashboard
+- ✅ Police placement recommandation
+- ✅ Traffic prediction
+- ✅ Camera roll review
+- **Output:** Mobile app ready for testing
 ---
 
 ## Performance Results (After Implementation)
