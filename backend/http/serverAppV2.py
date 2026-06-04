@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import mysql.connector
+import psycopg2
+import psycopg2.extras
 import time
 import logging
 import websockets
@@ -15,22 +16,18 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 logger = logging.getLogger(__name__)
 
 def get_db_connection():
-    """Create a new database connection with autocommit and session reset."""
+    """Create a new database connection."""
     try:
-        conn = mysql.connector.connect(
+        conn = psycopg2.connect(
             host="localhost",
-            user="root",
-            password="",
-            database="traffic_control_db",
-            autocommit=True
+            user="postgres",
+            password="admin",
+            dbname="trafficam_db"
         )
-        conn.reset_session()
-        cursor = conn.cursor()
-        cursor.execute("SET SESSION tx_isolation = 'READ-COMMITTED'")
-        cursor.close()
-        logger.debug("New database connection created and reset: %s", conn)
+        conn.autocommit = True
+        logger.debug("New database connection created: %s", conn)
         return conn
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error creating database connection: %s", e)
         raise
 
@@ -38,18 +35,12 @@ def get_db_connection():
 def get_intersections():
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
-        
-        # Disable query caching
-        cursor.execute("SET SESSION query_cache_type = OFF")
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
         # Query to check total nodes
         cursor.execute("SELECT COUNT(*) as node_count FROM nodes")
         node_count = cursor.fetchone()['node_count']
         logger.debug("Total nodes in database: %d", node_count)
-        
-        # Ensure fresh transaction state
-        cursor.execute("COMMIT")
         
         # Fetch intersections
         cursor.execute("""
@@ -64,7 +55,7 @@ def get_intersections():
         cursor.close()
         db.close()
         return jsonify(intersections)
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching intersections: %s", e)
         return jsonify({"error": str(e)}), 500
     except Exception as e:
@@ -81,15 +72,14 @@ def poll_new_nodes():
         
         while time.time() - start_time < timeout:
             db = get_db_connection()
-            cursor = db.cursor(dictionary=True)
+            cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
             
             # Diagnostic query
             cursor.execute("SELECT COUNT(*) as node_count FROM nodes")
             node_count = cursor.fetchone()['node_count']
             logger.debug("Total nodes during poll: %d", node_count)
-            
-            cursor.execute("COMMIT")
-            
+                        
             # Check for new nodes
             cursor.execute("""
                 SELECT latitude, longitude, nodes.id as node_id 
@@ -110,7 +100,7 @@ def poll_new_nodes():
         
         logger.debug("No new nodes found after timeout")
         return jsonify([])
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error polling new nodes: %s", e)
         return jsonify({"error": str(e)}), 500
     except Exception as e:
@@ -124,13 +114,14 @@ def get_intersection_info():
     logger.debug("Fetching intersection info for lat=%s, lng=%s", lat, lng)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         query = """
             SELECT 
                 intersections.address,
                 intersections.capacity,
                 nodes.cams,
-                IFNULL(SUM(cams.lanes), 0) AS total_lanes
+                COALESCE(SUM(cams.lanes), 0) AS total_lanes
             FROM intersections
             JOIN nodes ON intersections.id = nodes.intersection_id
             LEFT JOIN cams ON nodes.id = cams.node_id
@@ -146,7 +137,7 @@ def get_intersection_info():
             return jsonify(intersection)
         else:
             return jsonify({"error": "Intersection not found"}), 404
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching intersection info: %s", e)
         return jsonify({"error": str(e)}), 500
 
@@ -156,7 +147,8 @@ def get_address():
     logger.debug("Fetching address for node_id=%s", node_id)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         query = """
             SELECT address 
             FROM intersections, nodes 
@@ -171,7 +163,7 @@ def get_address():
             return jsonify(address)
         else:
             return jsonify({"error": "Intersection not found"}), 404
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching address: %s", e)
         return jsonify({"error": str(e)}), 500
 
@@ -181,7 +173,8 @@ def filter_intersections_by_governorate():
     logger.debug("Filtering intersections by governorate=%s", governorate)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         if governorate:
             query = """
                 SELECT 
@@ -190,7 +183,7 @@ def filter_intersections_by_governorate():
                     intersections.longitude, 
                     intersections.capacity, 
                     nodes.cams, 
-                    IFNULL(SUM(cams.lanes), 0) AS total_lanes
+                    COALESCE(SUM(cams.lanes), 0) AS total_lanes
                 FROM intersections
                 JOIN nodes ON nodes.intersection_id = intersections.id
                 LEFT JOIN cams ON nodes.id = cams.node_id
@@ -206,7 +199,7 @@ def filter_intersections_by_governorate():
                     intersections.longitude, 
                     intersections.capacity, 
                     nodes.cams, 
-                    IFNULL(SUM(cams.lanes), 0) AS total_lanes
+                    COALESCE(SUM(cams.lanes), 0) AS total_lanes
                 FROM intersections
                 JOIN nodes ON nodes.intersection_id = intersections.id
                 LEFT JOIN cams ON nodes.id = cams.node_id
@@ -218,7 +211,7 @@ def filter_intersections_by_governorate():
         db.close()
         logger.debug("Filtered intersections: %s", data)
         return jsonify({"success": True, "data": data})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error filtering intersections: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -255,7 +248,7 @@ def delete_intersection():
         db.close()
         logger.info("Successfully deleted intersection with id=%s", intersection_id)
         return jsonify({"success": True, "message": "Intersection deleted successfully"})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error deleting intersection: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
     except Exception as e:
@@ -324,7 +317,7 @@ async def update_intersection():
             # Notify WebSocket server of the update
             async def notify_websocket_async():
                 try:
-                    async with websockets.connect("ws://192.168.1.15:8765/ws") as ws:  
+                    async with websockets.connect("ws://192.168.1.16:8765/ws") as ws:  
                         update_message = {
                             "type": "node_update",
                             "node_id": str(node_id),
@@ -343,7 +336,7 @@ async def update_intersection():
 
         logger.info("Successfully updated intersection with id=%s", intersection_id)
         return jsonify({"success": True, "message": "Intersection updated successfully"})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Database error updating intersection: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
     except Exception as e:
@@ -356,14 +349,14 @@ def get_node_cams():
     logger.debug("Fetching cams for node_id=%s", node_id)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT id, ip_address FROM cams WHERE node_id = %s", (node_id,))
         cams = cursor.fetchall()
         cursor.close()
         db.close()
         logger.debug("Cams: %s", cams)
         return jsonify(cams)
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching node cams: %s", e)
         return jsonify({"error": str(e)}), 500
 
@@ -374,7 +367,7 @@ def get_cams_by_intersection():
     logger.debug("Fetching cams for intersection at lat=%s, lng=%s", lat, lng)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         query = """
             SELECT cams.id, cams.ip_address
             FROM intersections
@@ -388,7 +381,7 @@ def get_cams_by_intersection():
         db.close()
         logger.debug("Cams for intersection: %s", cams)
         return jsonify({"success": True, "data": cams})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching cams by intersection: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -398,7 +391,7 @@ def get_vehicle_count_by_day():
     logger.debug("Fetching vehicle count for node_id=%s", node_id)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT intersection_id FROM nodes WHERE id = %s", (node_id,))
         row = cursor.fetchone()
         if not row:
@@ -408,34 +401,28 @@ def get_vehicle_count_by_day():
 
         intersection_id = row['intersection_id']
         cursor.execute("""
-            WITH RankedCounts AS (
-                SELECT 
-                    DAYNAME(DATE(time_stamps)) AS weekday,
+            WITH ranked AS (
+                SELECT
+                    TO_CHAR(time, 'Day')          AS weekday,
+                    TRIM(TO_CHAR(time, 'Day'))    AS weekday_trim,
+                    EXTRACT(DOW FROM time)        AS dow,
                     vehicles_count,
-                    ROW_NUMBER() OVER (PARTITION BY DAYNAME(DATE(time_stamps)) ORDER BY vehicles_count) AS row_num,
-                    COUNT(*) OVER (PARTITION BY DAYNAME(DATE(time_stamps))) AS total_count
+                    ROW_NUMBER() OVER (
+                        PARTITION BY EXTRACT(DOW FROM time)
+                        ORDER BY vehicles_count
+                    )                             AS row_num,
+                    COUNT(*) OVER (
+                        PARTITION BY EXTRACT(DOW FROM time)
+                    )                             AS total_count
                 FROM history
                 WHERE intersection_id = %s
             )
-            SELECT 
-                weekday,
-                CASE 
-                    WHEN total_count % 2 = 1 THEN (
-                        SELECT vehicles_count 
-                        FROM RankedCounts rc 
-                        WHERE rc.weekday = RankedCounts.weekday 
-                        AND rc.row_num = (total_count + 1) / 2
-                    )
-                    ELSE (
-                        SELECT AVG(vehicles_count)
-                        FROM RankedCounts rc 
-                        WHERE rc.weekday = RankedCounts.weekday 
-                        AND rc.row_num IN (total_count / 2, total_count / 2 + 1)
-                    )
-                END AS median_count
-            FROM RankedCounts
-            GROUP BY weekday
-            ORDER BY FIELD(weekday, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+            SELECT
+                weekday_trim                      AS weekday,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY vehicles_count) AS median_count
+            FROM ranked
+            GROUP BY weekday_trim, dow
+            ORDER BY dow
         """, (intersection_id,))
         results = cursor.fetchall()
         cursor.close()
@@ -449,7 +436,7 @@ def get_vehicle_count_by_day():
             })
         logger.debug("Vehicle count data: %s", final_data)
         return jsonify(final_data)
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching vehicle count: %s", e)
         return jsonify({"error": str(e)}), 500
     
@@ -459,10 +446,10 @@ def get_congestion_times():
     logger.debug("Fetching congestion times for governorate=%s", governorate)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         query = """
             SELECT 
-                HOUR(time_stamps) AS hour,
+                EXTRACT(HOUR FROM time) AS hour,
                 AVG(vehicles_count) AS avg_vehicles
             FROM history
             JOIN intersections ON history.intersection_id = intersections.id
@@ -485,7 +472,7 @@ def get_congestion_times():
         
         logger.debug("Congestion times data: %s", result)
         return jsonify(result)
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching congestion times: %s", e)
         return jsonify({"error": str(e)}), 500
 
@@ -495,19 +482,19 @@ def get_congestion_areas():
     logger.debug("Fetching congestion areas for governorate=%s", governorate)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         query = """
             SELECT 
                 intersections.address,
                 intersections.latitude,
                 intersections.longitude,
-                CAST(AVG(history.vehicles_count) AS DECIMAL(10,2)) AS avg_vehicles,
-                HOUR(history.time_stamps) AS peak_hour
+                ROUND(AVG(history.vehicles_count)::numeric, 2)  AS avg_vehicles,
+                EXTRACT(HOUR FROM history.time) AS peak_hour
             FROM history
             JOIN intersections ON history.intersection_id = intersections.id
             WHERE intersections.governorate = %s
-            GROUP BY intersections.id, intersections.address, intersections.latitude, intersections.longitude, HOUR(history.time_stamps)
-            HAVING avg_vehicles > 50
+            GROUP BY intersections.id, intersections.address, intersections.latitude, intersections.longitude, HOUR(history.time)
+            HAVING ROUND(AVG(history.vehicles_count)::numeric, 2) > 50
             ORDER BY avg_vehicles DESC
             LIMIT 5
         """
@@ -528,7 +515,7 @@ def get_congestion_areas():
         logger.debug("Congestion areas raw data: %s", data)
         logger.debug("Congestion areas formatted data: %s", formatted_data)
         return jsonify(formatted_data)
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching congestion areas: %s", e)
         return jsonify({"error": str(e)}), 500
     
@@ -539,7 +526,8 @@ def filter_notifications_by_governorate():
     logger.debug("Filtering notifications by governorate=%s", governorate)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         if governorate:
             query = """
                 SELECT 
@@ -582,7 +570,7 @@ def filter_notifications_by_governorate():
         db.close()
         logger.debug("Filtered notifications: %s", data)
         return jsonify({"success": True, "data": data})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error filtering notifications: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -591,7 +579,7 @@ def get_cams():
     node_id = request.args.get('node_id')
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT * FROM cams WHERE node_id = %s", (node_id,))
         cams = cursor.fetchall()
         cursor.close()
@@ -621,7 +609,7 @@ def get_notifications_count():
         query = """
             SELECT COUNT(*) as count
             FROM notifications
-            WHERE intersection_id = %s AND DATE(time) = %s
+            WHERE intersection_id = %s AND time::date = %s
         """
         cursor.execute(query, (intersection_id, date))
         result = cursor.fetchone()
@@ -630,7 +618,7 @@ def get_notifications_count():
         conn.close()
         logger.debug("Notification count for intersection_id=%s: %d", intersection_id, count)
         return jsonify({'count': count})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching notification count: %s", e)
         return jsonify({'count': 0, 'error': str(e)}), 500
     
@@ -640,14 +628,14 @@ def get_nodes():
     logger.debug("Fetching nodes for intersection_id=%s", intersection_id)
     try:
         db = get_db_connection()
-        cursor = db.cursor(dictionary=True)
+        cursor = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("SELECT id FROM nodes WHERE intersection_id = %s", (intersection_id,))
         nodes = cursor.fetchall()
         cursor.close()
         db.close()
         logger.debug("Nodes: %s", nodes)
         return jsonify({"success": True, "data": nodes})
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error("Error fetching nodes: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
 

@@ -432,7 +432,7 @@ async def connection_handler(websocket, pool):
         logger.debug(f"Refreshed clients_data: {clients_data}")
 
 async def main():
-    ipAddress = "192.168.1.15"
+    ipAddress = "192.168.1.16"
     pool = await aiomysql.create_pool(
         host="localhost", user="root", password="", db="traffic_control_db", autocommit=True
     )

@@ -5,7 +5,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // ------------------------------------------------ Initializations ---------------------------------------------------
-let ipAdress = "192.168.1.15";
+let ipAdress = "192.168.1.16";
 
 //## marker icon
 const customIcon = L.icon({
@@ -69,7 +69,7 @@ fetch(`http://${ipAdress}:5000/get_intersections`)
     .then(data => {
         console.log("Initial intersections:", data);
         data.forEach(intersection => {
-            const nodeId = intersection.node_id;
+            const nodeId = parseInt(intersection.node_id);
             console.log(`Creating initial marker for node ${nodeId}`);
             markerLayers[nodeId] = createMarkerLayer(intersection.latitude, intersection.longitude, { node_id: nodeId, latitude: intersection.latitude, longitude: intersection.longitude });
             if (nodeId > lastNodeId) {
@@ -179,7 +179,8 @@ function startPolling() {
 
 // --------------------------------------------- WebSocket connection ---------------------------------------
 function connectWebSocket() {
-    ws = new WebSocket(`ws://${ipAdress}:8765/ws`);
+    // ws = new WebSocket(`ws://${ipAdress}:5000/ws`);
+    ws = new WebSocket(`ws://${ipAdress}:8766`);
     
     ws.onopen = () => console.log("Connected to WebSocket server");
     
@@ -187,6 +188,9 @@ function connectWebSocket() {
         let data = JSON.parse(event.data);
         console.log("Received WebSocket data:", data);
 
+        if (data.message_type === "new_node" || data.message_type === "node_update") {
+            data.node_id = parseInt(data.node_id);  
+        }
         if (data.message_type === "data") {
             updateNodeData(data);
         } else if (data.message_type === "notif") {
@@ -279,7 +283,7 @@ function connectWebSocket() {
     
     ws.onclose = function(event) {
         console.warn("WebSocket connection closed:", event);
-        setTimeout(connectWebSocket, 5000);
+        setTimeout(connectWebSocket, 8766);
     };
     
     ws.onerror = function(error) {
@@ -290,7 +294,7 @@ function connectWebSocket() {
 
 // ----------------------------------- layers and nodes management ----------------------------------------------
 function updateNodeData(data) {
-    const nodeId = data.node_id;
+    const nodeId = parseInt(data.node_id);
     const lat = data.latitude;
     const lng = data.longitude;
 
@@ -870,7 +874,7 @@ myModal.addEventListener('shown.bs.modal', function() {
         .then(data => {
             const labels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
             const counts = labels.map(day => {
-                const dayData = data.find(item => item.weekday === day);
+                const dayData = data.find(item => item.weekday.trim() === day);
                 return dayData ? dayData.median_count : 0;
             });
 
