@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const ipAddress = "192.168.1.16";
+    const ipAddress = "192.168.1.17";
     const notificationsContainer = document.querySelector('.card-body');
     const governorateSelect = document.querySelector('#governorateSelect');
     const filterBtn = document.querySelector('#filterButton');

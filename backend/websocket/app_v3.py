@@ -1,7 +1,8 @@
+import os
 import asyncio
 import websockets
 import json
-import aiomysql
+import asyncpg
 import logging
 
 # Set up logging
@@ -14,190 +15,173 @@ connected_clients = set()
 # Store additional data for each client
 clients_data = {}
 
-# Fetch lat/lon and intersection_id from MySQL using node_id
+# Fetch lat/lon and intersection_id from the configured PostgreSQL database using node_id
 async def fetch_location_from_db(node_id, pool):
+    if pool is None:
+        hash_val = hash(str(node_id)) % 1000
+        latitude = 36.8 + (hash_val % 100) / 10000
+        longitude = 10.2 + (hash_val % 100) / 10000
+        logger.debug(f"DEMO MODE: Generated location for node_id={node_id}: latitude={latitude}, longitude={longitude}")
+        return latitude, longitude, 1
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            # Ensure fresh data by disabling query caching
-            await cur.execute("SET SESSION query_cache_type = OFF")
-            await cur.execute(
-                """
-                SELECT intersections.latitude, intersections.longitude, nodes.intersection_id 
-                FROM intersections 
-                JOIN nodes ON intersections.id = nodes.intersection_id 
-                WHERE nodes.id = %s
-                """, 
-                (node_id,)
-            )
-            result = await cur.fetchone()
-            if result:
-                latitude, longitude, intersection_id = result
-                logger.debug(f"Fetched location for node_id={node_id}: latitude={latitude}, longitude={longitude}")
-                return float(latitude), float(longitude), intersection_id
-            logger.debug(f"No location found for node_id={node_id}")
-            return None, None, None
+        result = await conn.fetchrow(
+            """
+            SELECT intersections.latitude, intersections.longitude, nodes.intersection_id
+            FROM intersections
+            JOIN nodes ON intersections.id = nodes.intersection_id
+            WHERE nodes.id = $1
+            """,
+            int(node_id)
+        )
+        if result:
+            latitude = result["latitude"]
+            longitude = result["longitude"]
+            intersection_id = result["intersection_id"]
+            logger.debug(f"Fetched location for node_id={node_id}: latitude={latitude}, longitude={longitude}")
+            return float(latitude), float(longitude), int(intersection_id)
+        logger.debug(f"No location found for node_id={node_id}")
+        return None, None, None
 
 # Insert new intersection, node, and cameras into the database
 async def insert_new_node(data, pool):
+    if pool is None:
+        latitude = float(data["data"]["coordinates"][0]["latitude"])
+        longitude = float(data["data"]["coordinates"][0]["longitude"])
+        camera_count = int(data["data"]["camera_count"])
+        node_id = data["data"].get("node_id")
+
+        if node_id is None:
+            node_id = int(asyncio.get_event_loop().time() * 1000) % 100000
+
+        logger.info(f"DEMO MODE: Node config received (no DB save): node_id={node_id}, lat={latitude}, lon={longitude}")
+        return str(node_id), latitude, longitude, 1
+
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            latitude = data["data"]["coordinates"][0]["latitude"]
-            longitude = data["data"]["coordinates"][0]["longitude"]
-            camera_count = data["data"]["camera_count"]
+        async with conn.transaction():
+            latitude = float(data["data"]["coordinates"][0]["latitude"])
+            longitude = float(data["data"]["coordinates"][0]["longitude"])
+            camera_count = int(data["data"]["camera_count"])
             governorate = data["data"].get("governorate", "Unknown")
             address = data["data"].get("address", "Unknown Address")
-            capacity = data["data"].get("capacity", 20)
-            node_id = data["data"].get("node_id")  
+            capacity = int(data["data"].get("capacity", 20))
+            node_id = data["data"].get("node_id")
 
             # Check for existing intersection
-            await cur.execute(
+            intersection_result = await conn.fetchrow(
                 """
-                SELECT id FROM intersections 
-                WHERE latitude = %s AND longitude = %s AND address = %s
+                SELECT id FROM intersections
+                WHERE latitude = $1 AND longitude = $2 AND address = $3
                 """,
-                (latitude, longitude, address)
+                latitude, longitude, address
             )
-            intersection_result = await cur.fetchone()
 
             if intersection_result:
-                intersection_id = intersection_result[0]
+                intersection_id = int(intersection_result["id"])
                 logger.debug("Updated node")
-                # Update intersection details
-                await cur.execute(
+                await conn.execute(
                     """
-                    UPDATE intersections 
-                    SET governorate = %s, address = %s, latitude = %s, longitude = %s, capacity = %s
-                    WHERE id = %s
+                    UPDATE intersections
+                    SET governorate = $1, address = $2, latitude = $3, longitude = $4, capacity = $5
+                    WHERE id = $6
                     """,
-                    (governorate, address, latitude, longitude, capacity, intersection_id)
+                    governorate, address, latitude, longitude, capacity, intersection_id
                 )
                 logger.debug(f"Updated intersection: intersection_id={intersection_id}")
             else:
-                # Insert new intersection
-                await cur.execute(
+                intersection_id = int(await conn.fetchval(
                     """
                     INSERT INTO intersections (governorate, address, latitude, longitude, capacity)
-                    VALUES (%s, %s, %s, %s, %s)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING id
                     """,
-                    (governorate, address, latitude, longitude, capacity)
-                )
-                intersection_id = cur.lastrowid
+                    governorate, address, latitude, longitude, capacity
+                ))
                 logger.debug(f"Inserted new intersection: intersection_id={intersection_id}")
 
             # Check for existing node
+            node_result = None
             if node_id:
-                await cur.execute(
-                    """
-                    SELECT id, intersection_id, cams FROM nodes 
-                    WHERE id = %s
-                    """,
-                    (node_id,)
+                node_result = await conn.fetchrow(
+                    "SELECT id, intersection_id, cams FROM nodes WHERE id = $1",
+                    int(node_id)
                 )
             else:
-                await cur.execute(
-                    """
-                    SELECT id, intersection_id, cams FROM nodes 
-                    WHERE intersection_id = %s AND cams = %s
-                    """,
-                    (intersection_id, camera_count)
+                node_result = await conn.fetchrow(
+                    "SELECT id, intersection_id, cams FROM nodes WHERE intersection_id = $1 AND cams = $2",
+                    intersection_id, camera_count
                 )
-            node_result = await cur.fetchone()
 
             if node_result:
-                node_id = node_result[0]
-                existing_intersection_id = node_result[1]
-                existing_camera_count = node_result[2]
-                # Update node if camera count has changed
+                node_id = int(node_result["id"])
+                existing_intersection_id = int(node_result["intersection_id"])
+                existing_camera_count = node_result["cams"]
                 if existing_camera_count != camera_count or existing_intersection_id != intersection_id:
-                    await cur.execute(
-                        """
-                        UPDATE nodes 
-                        SET intersection_id = %s, cams = %s
-                        WHERE id = %s
-                        """,
-                        (intersection_id, camera_count, node_id)
+                    await conn.execute(
+                        "UPDATE nodes SET intersection_id = $1, cams = $2 WHERE id = $3",
+                        intersection_id, camera_count, node_id
                     )
                     logger.debug(f"Updated node: node_id={node_id}, cams={camera_count}")
                 else:
                     logger.debug(f"Node already exists: node_id={node_id}")
             else:
-                # Insert new node
-                await cur.execute(
-                    """
-                    INSERT INTO nodes (intersection_id, cams)
-                    VALUES (%s, %s)
-                    """,
-                    (intersection_id, camera_count)
-                )
-                node_id = cur.lastrowid
+                node_id = int(await conn.fetchval(
+                    "INSERT INTO nodes (intersection_id, cams) VALUES ($1, $2) RETURNING id",
+                    intersection_id, camera_count
+                ))
                 logger.debug(f"Inserted new node: node_id={node_id}")
 
-            # Delete existing camera records for this node
-            await cur.execute(
-                """
-                DELETE FROM cams WHERE node_id = %s
-                """,
-                (node_id,)
-            )
+            await conn.execute("DELETE FROM cams WHERE node_id = $1", node_id)
 
-            # Insert updated camera records
             for i in range(1, camera_count + 1):
                 camera_data = data["data"].get(f"camera_{i}", {})
                 if camera_data:
                     stream_url = camera_data.get("video_source", "")
-                    lane_number = camera_data.get("lane_number", 1)
+                    lane_number = int(camera_data.get("lane_number", 1))
                     logger.debug(f"Inserting camera {i} with stream_url: {stream_url}")
-                    await cur.execute(
-                        """
-                        INSERT INTO cams (node_id, lanes, ip_address)
-                        VALUES (%s, %s, %s)
-                        """,
-                        (node_id, lane_number, stream_url)
+                    await conn.execute(
+                        "INSERT INTO cams (node_id, lanes, ip_address) VALUES ($1, $2, $3)",
+                        node_id, lane_number, stream_url
                     )
 
-            await conn.commit()
             logger.debug(f"Committed node configuration: node_id={node_id}, intersection_id={intersection_id}")
-            return node_id, latitude, longitude, intersection_id
+            return str(node_id), latitude, longitude, int(intersection_id)
 
 # Save message to history table
 async def save_to_history(data, intersection_id, pool):
+    if pool is None:
+        logger.debug(f"DEMO MODE: Skipping history save for intersection_id={intersection_id}")
+        return
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            vehicles_count = data.get("vehicles", 0)
+        async with conn.transaction():
+            vehicles_count = int(data.get("vehicles", 0))
             total_passed = 0
             for i in range(1, 5):
                 key = f"voie_{i}"
                 if key in data:
-                    total_passed += data[key]
-            # Average all available speeds (up to four)
+                    total_passed += int(data[key])
             speeds = [data.get(f"avg_speed_{i}", 0) for i in range(1, 5) if f"avg_speed_{i}" in data]
             if data.get("avg_speed") is not None:
                 speeds.append(data["avg_speed"])
-            avg_speed = sum(speeds) / len(speeds) if speeds else 0
-            
-            await cur.execute(
-                """
-                INSERT INTO history (intersection_id, vehicles_count, total_passed, avg_speed)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (intersection_id, vehicles_count, total_passed, avg_speed)
+            # avg_speed column is INTEGER in DB — round to nearest int
+            avg_speed = int(round(sum(speeds) / len(speeds))) if speeds else 0
+
+            await conn.execute(
+                "INSERT INTO history (intersection_id, vehicles_count, total_passed, avg_speed) VALUES ($1, $2, $3, $4)",
+                int(intersection_id), vehicles_count, total_passed, avg_speed
             )
-            await conn.commit()
 
 async def save_notification(node_id, intersection_id, pool):
+    if pool is None:
+        logger.debug(f"DEMO MODE: Skipping notification save for node_id={node_id}")
+        return
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            severity = 3  
-            content = "Traffic jam"  
-            
-            await cur.execute(
-                """
-                INSERT INTO notifications (intersection_id, severety, content)
-                VALUES (%s, %s, %s)
-                """,
-                (intersection_id, severity, content)
+        async with conn.transaction():
+            severity = 3
+            content = "Traffic jam"
+            await conn.execute(
+                "INSERT INTO notifications (intersection_id, severety, content) VALUES ($1, $2, $3)",
+                int(intersection_id), severity, content
             )
-            await conn.commit()
             logger.debug(f"Saved notification: intersection_id={intersection_id}, severity={severity}, content='{content}'")
 
 async def handle_message(websocket, pool):
@@ -210,7 +194,7 @@ async def handle_message(websocket, pool):
             logger.debug(f"Received message: {data}")
             message_type = data.get("type", "unknown")
             node_id = None
-            
+
             if message_type == "vehicle_data":
                 nested_data = data.get("data", {})
                 node_id = nested_data.get("node_id", "Unknown")
@@ -276,11 +260,10 @@ async def handle_message(websocket, pool):
                         "latitude": latitude,
                         "longitude": longitude,
                         "node_id": node_id,
-                        "intersection_id": intersection_id
+                        "intersection_id": int(intersection_id)
                     }
                     logger.debug(f"New node connected: {node_id} at ({latitude}, {longitude})")
                 else:
-                    # Refresh coordinates to ensure consistency
                     latitude, longitude, intersection_id = await fetch_location_from_db(node_id, pool)
                     if latitude is None or longitude is None or intersection_id is None:
                         await websocket.send(json.dumps({"error": "Node ID not found in database"}))
@@ -288,7 +271,7 @@ async def handle_message(websocket, pool):
                     clients_data[node_id].update({
                         "latitude": latitude,
                         "longitude": longitude,
-                        "intersection_id": intersection_id
+                        "intersection_id": int(intersection_id)
                     })
                     logger.debug(f"Refreshed coordinates for node_id={node_id}: ({latitude}, {longitude})")
 
@@ -312,16 +295,13 @@ async def handle_message(websocket, pool):
                 node_id = data.get("node_id", "Unknown")
                 logger.debug(f"Received notification from node {node_id}")
 
-                # Fetch intersection_id
                 if node_id in clients_data:
-                    intersection_id = clients_data[node_id]["intersection_id"]
+                    intersection_id = int(clients_data[node_id]["intersection_id"])
                 else:
                     latitude, longitude, intersection_id = await fetch_location_from_db(node_id, pool)
 
-                # Save notification to database
                 await save_notification(node_id, intersection_id, pool)
 
-                # Send notification
                 notif_data = {
                     "message_type": "notif",
                     "node_id": node_id
@@ -336,7 +316,7 @@ async def handle_message(websocket, pool):
                     "latitude": latitude,
                     "longitude": longitude,
                     "node_id": node_id,
-                    "intersection_id": intersection_id
+                    "intersection_id": int(intersection_id)
                 }
                 config_response = {
                     "type": "config_response",
@@ -351,19 +331,16 @@ async def handle_message(websocket, pool):
                 await websocket.send(json.dumps(config_response))
                 logger.debug(f"Sent config_response to client: {config_response}")
 
-                # Check if this is an update to an existing node
-                async with pool.acquire() as conn:
-                    async with conn.cursor() as cur:
-                        await cur.execute(
-                            """
-                            SELECT COUNT(*) FROM nodes WHERE id = %s
-                            """,
-                            (node_id,)
+                node_exists = False
+                if pool is not None:
+                    async with pool.acquire() as conn:
+                        count = await conn.fetchval(
+                            "SELECT COUNT(*) FROM nodes WHERE id = $1",
+                            int(node_id)
                         )
-                        node_exists = (await cur.fetchone())[0] > 0
+                        node_exists = count > 0
 
                 if node_exists:
-                    # Send node_update for existing nodes
                     update_node_data = {
                         "message_type": "node_update",
                         "node_id": node_id,
@@ -373,7 +350,6 @@ async def handle_message(websocket, pool):
                     logger.debug(f"Broadcasting node_update for existing node: {update_node_data}")
                     await asyncio.gather(*[client.send(json.dumps(update_node_data)) for client in connected_clients])
                 else:
-                    # Send new_node for new nodes
                     new_node_data = {
                         "message_type": "new_node",
                         "node_id": node_id,
@@ -396,30 +372,28 @@ async def handle_message(websocket, pool):
         logger.debug(f"Refreshed clients_data: {clients_data}")
 
 async def refresh_clients_data(pool):
+    if pool is None:
+        logger.debug("DEMO MODE: Skipping background clients data refresh")
+        return
     while True:
         try:
             async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        """
-                        SELECT nodes.id, intersections.latitude, intersections.longitude, nodes.intersection_id
-                        FROM nodes
-                        JOIN intersections ON nodes.intersection_id = intersections.id
-                        """
-                    )
-                    results = await cur.fetchall()
-                    for row in results:
-                        node_id = str(row[0])
-                        clients_data[node_id] = {
-                            "latitude": float(row[1]),
-                            "longitude": float(row[2]),
-                            "node_id": node_id,
-                            "intersection_id": str(row[3])
-                        }
+                results = await conn.fetch(
+                    "SELECT nodes.id, intersections.latitude, intersections.longitude, nodes.intersection_id "
+                    "FROM nodes JOIN intersections ON nodes.intersection_id = intersections.id"
+                )
+                for row in results:
+                    node_id = str(row["id"])
+                    clients_data[node_id] = {
+                        "latitude": float(row["latitude"]),
+                        "longitude": float(row["longitude"]),
+                        "node_id": node_id,
+                        "intersection_id": int(row["intersection_id"])
+                    }
             logger.debug(f"Refreshed clients_data: {clients_data}")
         except Exception as e:
             logger.error(f"Error refreshing clients_data: {e}")
-        await asyncio.sleep(60)  # Refresh every 1 min 
+        await asyncio.sleep(60)
 
 async def connection_handler(websocket, pool):
     try:
@@ -431,14 +405,41 @@ async def connection_handler(websocket, pool):
             connected_clients.remove(websocket)
         logger.debug(f"Refreshed clients_data: {clients_data}")
 
+async def get_database_pool():
+    database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+    try:
+        if database_url:
+            pool = await asyncpg.create_pool(
+                dsn=database_url,
+                min_size=1,
+                max_size=10,
+                ssl="require",
+                statement_cache_size=0
+            )
+            logger.info("Connected to Supabase database")
+            return pool
+        pool = await asyncpg.create_pool(
+            host=os.getenv("PGHOST", "localhost"),
+            port=int(os.getenv("PGPORT", 5432)),
+            user=os.getenv("PGUSER", "postgres"),
+            password=os.getenv("PGPASSWORD", "admin"),
+            database=os.getenv("PGDATABASE", "trafficam_db"),
+            min_size=1,
+            max_size=10,
+            statement_cache_size=0
+        )
+        logger.info("Connected to local PostgreSQL database")
+        return pool
+    except Exception as e:
+        logger.warning(f"Failed to connect to database: {e}. Running in DEMO MODE (in-memory storage only)")
+        return None
+
 async def main():
-    ipAddress = "192.168.1.16"
-    pool = await aiomysql.create_pool(
-        host="localhost", user="root", password="", db="traffic_control_db", autocommit=True
-    )
-    asyncio.create_task(refresh_clients_data(pool))  # Start background task
+    ipAddress = os.getenv("WEBSOCKET_HOST", "192.168.1.17")
+    pool = await get_database_pool()
+    asyncio.create_task(refresh_clients_data(pool))
     server = await websockets.serve(
-        lambda ws: connection_handler(ws, pool),  # Pass pool to connection_handler
+        lambda ws: connection_handler(ws, pool),
         ipAddress,
         8765,
         ping_interval=20,

@@ -1,18 +1,12 @@
 // ------------------------------------------------ Initialize the map -----------------------------------------------
-// ------------------------------------------------ Initialize the map -----------------------------------------------
 let map = L.map('map', {
     zoomControl: true,
     attributionControl: true
 }).setView([36.602575, 10.122528], 9);
 
-// IMPORTANT: Do NOT add tile layer here anymore!
-// We let theme.js handle it via initMapWithTheme()
-
-// Call this after map is created
 if (typeof window.initMapWithTheme === 'function') {
     window.initMapWithTheme(map);
 } else {
-    // Fallback in case theme.js loads after
     console.warn("initMapWithTheme not found, using default light tiles");
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
@@ -20,9 +14,8 @@ if (typeof window.initMapWithTheme === 'function') {
 }
 
 // ------------------------------------------------ Initializations ---------------------------------------------------
-let ipAdress = "192.168.1.16";
+let ipAdress = "192.168.1.17";
 
-//## marker icon
 const customIcon = L.icon({
     iconUrl: '../img/marker.png',
     iconSize: [36, 36],
@@ -30,19 +23,17 @@ const customIcon = L.icon({
     popupAnchor: [0, -32]
 });
 
-//## Nodes and layers management
 let nodeLayers = {};
 let markerLayers = {};
 let selectedNodeLayer = null;
 let previouslySelectedCircle = null;
-const DATA_TIMEOUT = 5000;
-let lastNodeId = 0; // Track the last node ID for polling
-let recentAlerts = {}; // Store the latest alert per node_id
-let ws = null; 
-let recenteredNodes = new Set(); // Track nodes that have been recentered
+const DATA_TIMEOUT = 12000; // 12s — must be well above send interval (5s)
+let lastNodeId = 0;
+let recentAlerts = {};
+let ws = null;
+let recenteredNodes = new Set();
 let selectedIntersectionCapacity = 100;
 
-//## Debounce utility for UI updates
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -55,11 +46,8 @@ function debounce(func, wait) {
     };
 }
 
-//## Debounced updateUIElements
 const debouncedUpdateUIElements = debounce(updateUIElements, 300);
 
-
-//## Initial fetch to display all intersections with markers ##
 fetch(`http://${ipAdress}:5000/get_intersections`)
     .then(response => response.json())
     .then(data => {
@@ -82,12 +70,9 @@ fetch(`http://${ipAdress}:5000/get_intersections`)
 function startPolling() {
     function poll() {
         console.log(`Polling for node updates with last_node_id=${lastNodeId}`);
-        // Poll for new nodes
         fetch(`http://${ipAdress}:5000/poll_new_nodes?last_node_id=${lastNodeId}`)
             .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.json();
             })
             .then(data => {
@@ -95,27 +80,21 @@ function startPolling() {
                 if (data && data.length > 0) {
                     data.forEach(intersection => {
                         const nodeId = intersection.node_id;
-                        // Only create a marker if no circle exists
                         if (!nodeLayers[nodeId] && !markerLayers[nodeId]) {
                             console.log(`Creating marker for new node ${nodeId} via polling`);
                             markerLayers[nodeId] = createMarkerLayer(intersection.latitude, intersection.longitude, { node_id: nodeId, latitude: intersection.latitude, longitude: intersection.longitude });
-                            if (nodeId > lastNodeId) {
-                                lastNodeId = nodeId;
-                            }
+                            if (nodeId > lastNodeId) lastNodeId = nodeId;
                         } else {
-                            console.log(`Node ${nodeId} already exists or is active, skipping marker creation`);
+                            console.log(`Node ${nodeId} already exists, skipping marker creation`);
                         }
                     });
                 }
             })
             .catch(error => console.error("Error polling new nodes:", error));
 
-        // Poll for all intersections to check for updates
         fetch(`http://${ipAdress}:5000/get_intersections`)
             .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.json();
             })
             .then(data => {
@@ -134,7 +113,6 @@ function startPolling() {
                                 map.setView([intersection.latitude, intersection.longitude], map.getZoom());
                                 recenteredNodes.add(nodeId);
                                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
-                                console.log(`Recentered map for selected node ${nodeId} via polling`);
                             }
                             if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
                                 fetchIntersectionDetails(intersection.latitude, intersection.longitude);
@@ -154,7 +132,6 @@ function startPolling() {
                                 map.setView([intersection.latitude, intersection.longitude], map.getZoom());
                                 recenteredNodes.add(nodeId);
                                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
-                                console.log(`Recentered map for selected node ${nodeId} via polling`);
                             }
                             if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
                                 fetchIntersectionDetails(intersection.latitude, intersection.longitude);
@@ -175,17 +152,16 @@ function startPolling() {
 
 // --------------------------------------------- WebSocket connection ---------------------------------------
 function connectWebSocket() {
-    // ws = new WebSocket(`ws://${ipAdress}:5000/ws`);
-    ws = new WebSocket(`ws://${ipAdress}:8766`);
-    
+    ws = new WebSocket(`ws://${ipAdress}:8765`);
+
     ws.onopen = () => console.log("Connected to WebSocket server");
-    
+
     ws.onmessage = function(event) {
         let data = JSON.parse(event.data);
         console.log("Received WebSocket data:", data);
 
         if (data.message_type === "new_node" || data.message_type === "node_update") {
-            data.node_id = parseInt(data.node_id);  
+            data.node_id = parseInt(data.node_id);
         }
         if (data.message_type === "data") {
             updateNodeData(data);
@@ -197,7 +173,6 @@ function connectWebSocket() {
             const newLng = data.longitude;
             console.log(`Processing new_node for node ${nodeId} at lat=${newLat}, lng=${newLng}`);
 
-            // Only create a marker if no circle exists (i.e., node is not active)
             if (!nodeLayers[nodeId]) {
                 if (markerLayers[nodeId]) {
                     console.log(`Updating existing marker for node ${nodeId}`);
@@ -209,21 +184,16 @@ function connectWebSocket() {
                     markerLayers[nodeId] = createMarkerLayer(newLat, newLng, { node_id: nodeId, latitude: newLat, longitude: newLng });
                 }
             } else {
-                console.log(`Node ${nodeId} is already active with a circle, skipping marker creation`);
+                console.log(`Node ${nodeId} already active, skipping marker creation`);
             }
 
-            if (nodeId > lastNodeId) {
-                lastNodeId = nodeId;
-            }
-
-            // Show notification for new node
+            if (nodeId > lastNodeId) lastNodeId = nodeId;
             showNodeNotification(data, "new_node");
 
             if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId && !recenteredNodes.has(nodeId)) {
                 map.setView([newLat, newLng], map.getZoom());
                 recenteredNodes.add(nodeId);
                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
-                console.log(`Recentered map for new node ${nodeId}`);
             }
 
             map.invalidateSize();
@@ -241,27 +211,22 @@ function connectWebSocket() {
             console.log(`Received node_update for node ${nodeId}: lat=${newLat}, lng=${newLng}`);
 
             if (markerLayers[nodeId]) {
-                console.log(`Updating marker position for node ${nodeId}`);
                 markerLayers[nodeId].setLatLng([newLat, newLng]);
                 markerLayers[nodeId].data.latitude = newLat;
                 markerLayers[nodeId].data.longitude = newLng;
             }
-
             if (nodeLayers[nodeId]) {
-                console.log(`Updating circle position for node ${nodeId}`);
                 nodeLayers[nodeId].circle.setLatLng([newLat, newLng]);
                 nodeLayers[nodeId].data.latitude = newLat;
                 nodeLayers[nodeId].data.longitude = newLng;
             }
 
-            // Show notification for updated node
             showNodeNotification(data, "node_update");
 
             if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId && !recenteredNodes.has(nodeId)) {
                 map.setView([newLat, newLng], map.getZoom());
                 recenteredNodes.add(nodeId);
                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
-                console.log(`Recentered map for updated node ${nodeId}`);
             }
 
             map.invalidateSize();
@@ -276,12 +241,12 @@ function connectWebSocket() {
             console.error('Invalid data received:', data);
         }
     };
-    
+
     ws.onclose = function(event) {
         console.warn("WebSocket connection closed:", event);
         setTimeout(connectWebSocket, 8766);
     };
-    
+
     ws.onerror = function(error) {
         console.error("WebSocket error:", error);
         ws.close();
@@ -294,7 +259,6 @@ function updateNodeData(data) {
     const lat = data.latitude;
     const lng = data.longitude;
 
-    // Calculate average density for color
     const laneKeys = Object.keys(data || {})
         .filter(key => key.startsWith("voie_"))
         .sort((a, b) => parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]));
@@ -310,41 +274,52 @@ function updateNodeData(data) {
         const density = speed > 0 ? (counter / speed) : 0.0;
         densityValues.push(density);
     });
-    const avgDensity = densityValues.length > 0 
-        ? densityValues.reduce((sum, d) => sum + d, 0) / densityValues.length 
+    const avgDensity = densityValues.length > 0
+        ? densityValues.reduce((sum, d) => sum + d, 0) / densityValues.length
         : 0.0;
     const color = getColorByDensity(avgDensity);
+
+    // Always ensure marker is removed when we have active data
+    if (markerLayers[nodeId]) {
+        console.log(`Removing marker for node ${nodeId}`);
+        if (map.hasLayer(markerLayers[nodeId])) {
+            map.removeLayer(markerLayers[nodeId]);
+        }
+        delete markerLayers[nodeId];
+    }
 
     if (!nodeLayers[nodeId]) {
         console.log(`Creating circle for node ${nodeId}`);
         nodeLayers[nodeId] = createCircleLayer(lat, lng, color, data);
-        // Remove any existing marker
-        if (markerLayers[nodeId]) {
-            console.log(`Removing marker for node ${nodeId}`);
-            map.removeLayer(markerLayers[nodeId]);
-            delete markerLayers[nodeId];
-        }
     } else {
-        console.log(`Updating circle for node ${nodeId} to lat=${lat}, lng=${lng}`);
+        console.log(`Updating circle for node ${nodeId}`);
         nodeLayers[nodeId].circle.setLatLng([lat, lng]);
         nodeLayers[nodeId].data.latitude = lat;
         nodeLayers[nodeId].data.longitude = lng;
         updateCircleLayer(nodeId, color, data);
     }
 
-    // Reset timeout for node activity
+    // Clear previous timeout and set a fresh one
     clearTimeout(nodeLayers[nodeId].timeout);
     nodeLayers[nodeId].timeout = setTimeout(() => {
+        // Guard: data may have arrived just as timeout fired
+        if (!nodeLayers[nodeId]) return;
+
+        const currentLatLng = nodeLayers[nodeId].circle.getLatLng();
+        const lastData = { ...nodeLayers[nodeId].data };
+
         console.log(`Node ${nodeId} inactive, removing circle`);
         map.removeLayer(nodeLayers[nodeId].circle);
         delete nodeLayers[nodeId];
-        // Only create a marker if no circle exists
+
         if (!markerLayers[nodeId]) {
-            console.log(`Creating new marker for node ${nodeId}`);
-            markerLayers[nodeId] = createMarkerLayer(lat, lng, data);
+            console.log(`Creating inactive marker for node ${nodeId}`);
+            markerLayers[nodeId] = createMarkerLayer(currentLatLng.lat, currentLatLng.lng, lastData);
         } else {
-            console.log(`Restoring marker for node ${nodeId}`);
-            map.addLayer(markerLayers[nodeId]);
+            console.log(`Restoring existing marker for node ${nodeId}`);
+            if (!map.hasLayer(markerLayers[nodeId])) {
+                map.addLayer(markerLayers[nodeId]);
+            }
         }
     }, DATA_TIMEOUT);
 
@@ -373,9 +348,9 @@ function createCircleLayer(lat, lng, color, data) {
         previouslySelectedCircle = circle;
         selectedNodeLayer = { circle, data };
         map.setView([lat, lng], 13);
-        fetchIntersectionDetails(lat, lng);      // ← keep: populates hidden fields + triggers updateAlertsCard
-        updateUIElements(data);                  // ← keep: populates hidden status-bar mirrors
-        _openPopupWhenReady(data);               // ← NEW: open the node popup panel
+        fetchIntersectionDetails(lat, lng);
+        updateUIElements(data);
+        _openPopupWhenReady(data);
     });
     return { circle, data, timeout: null };
 }
@@ -399,7 +374,7 @@ function createMarkerLayer(lat, lng, data) {
         map.setView([lat, lng], 12);
         fetchIntersectionDetails(lat, lng);
         updateUIElements(data || {});
-        _openPopupWhenReady(data);   // ← NEW
+        _openPopupWhenReady(data);
     });
     return marker;
 }
@@ -411,15 +386,12 @@ function showTrafficNotification(data) {
         .then(response => response.json())
         .then(recievedAddress => {
             if (recievedAddress.address) {
-                console.log("notif here from ", data.node_id);
-                console.log("notif here from ", recievedAddress.address);
                 toastEl.querySelector('.toast-body').innerText = recievedAddress.address;
                 const alert = {
                     node_id: data.node_id,
                     address: recievedAddress.address,
                     timestamp: new Date().toLocaleTimeString()
                 };
-                // Check if the alert content has changed
                 const prevAlert = recentAlerts[data.node_id];
                 const alertChanged = !prevAlert || prevAlert.address !== alert.address || prevAlert.timestamp !== alert.timestamp;
                 recentAlerts[data.node_id] = alert;
@@ -438,7 +410,6 @@ function showTrafficNotification(data) {
             console.error("Error fetching address:", error);
             toastEl.querySelector('.toast-body').innerText = "not found";
         });
-
     toast.show();
 }
 
@@ -449,60 +420,44 @@ function showNodeNotification(data, messageType) {
     const lat = data.latitude;
     const lng = data.longitude;
 
-    // Fetch the address for the node
     fetch(`http://${ipAdress}:5000/get_address?node_id=${nodeId}`)
         .then(response => response.json())
         .then(recievedAddress => {
             const message = messageType === 'new_node' ? 'New node added' : 'Node activated';
             if (recievedAddress.address) {
-                console.log(`Showing ${message} notification for node ${nodeId} at ${recievedAddress.address}`);
                 toastEl.querySelector('.toast-body').innerText = `${message} at ${recievedAddress.address}`;
             } else {
-                console.log(`Showing ${message} notification for node ${nodeId} at unknown location`);
                 toastEl.querySelector('.toast-body').innerText = `${message} at unknown location`;
             }
-
-            // Update the toast header title dynamically
             toastEl.querySelector('.toast-header .font-weight-bold').innerText = message;
 
             toastEl.onclick = null;
             toastEl.onclick = (event) => {
-                // To avoid triggering the click event when closing the toast
-                if (event.target.classList.contains('fa-times') || event.target.closest('.fa-times')) {
-                    return;
-                }
-                map.setView([lat, lng], 12); 
-                toast.hide(); 
-                // Select the node to update UI
+                if (event.target.classList.contains('fa-times') || event.target.closest('.fa-times')) return;
+                map.setView([lat, lng], 12);
+                toast.hide();
                 if (markerLayers[nodeId]) {
                     selectedNodeLayer = { marker: markerLayers[nodeId], data: markerLayers[nodeId].data };
                     fetchIntersectionDetails(lat, lng);
                     updateUIElements(markerLayers[nodeId].data);
                 } else if (nodeLayers[nodeId]) {
                     selectedNodeLayer = { circle: nodeLayers[nodeId].circle, data: nodeLayers[nodeId].data };
-                    nodeLayers[nodeId].circle.setStyle({
-                        weight: 6,
-                        dashArray: '12',
-                    });
+                    nodeLayers[nodeId].circle.setStyle({ weight: 6, dashArray: '12' });
                     if (previouslySelectedCircle && previouslySelectedCircle !== nodeLayers[nodeId].circle) {
-                        previouslySelectedCircle.setStyle({
-                            weight: 2,
-                            dashArray: null,
-                        });
+                        previouslySelectedCircle.setStyle({ weight: 2, dashArray: null });
                     }
                     previouslySelectedCircle = nodeLayers[nodeId].circle;
                     fetchIntersectionDetails(lat, lng);
                     updateUIElements(nodeLayers[nodeId].data);
                 }
             };
-
             toast.show();
         })
         .catch(error => {
             console.error("Error fetching address for node notification:", error);
-            toastEl.querySelector('.toast-body').innerText = 
+            toastEl.querySelector('.toast-body').innerText =
                 `${messageType === 'new_node' ? 'New node added' : 'Node updated'} at unknown location`;
-            toastEl.querySelector('.toast-header .font-weight-bold').innerText = 
+            toastEl.querySelector('.toast-header .font-weight-bold').innerText =
                 messageType === 'new_node' ? 'New node added' : 'Node updated';
             toast.show();
         });
@@ -564,13 +519,11 @@ function updateAlertsCount() {
 
 function updateUIElements(data) {
     const densityValues = [];
-    
-    // Get and sort lane keys
+
     const laneKeys = Object.keys(data || {})
         .filter(key => key.startsWith("voie_"))
         .sort((a, b) => parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]));
 
-    // Calculate density for each lane and store for average
     laneKeys.forEach(laneKey => {
         const laneNumber = laneKey.split("_")[1];
         const counter = data[laneKey] || 0;
@@ -583,30 +536,22 @@ function updateUIElements(data) {
         densityValues.push(parseFloat(density));
     });
 
-    // Set average density in average-density
-    const avgDensity = densityValues.length > 0 
-        ? (densityValues.reduce((sum, d) => sum + d, 0) / densityValues.length).toFixed(1) 
+    const avgDensity = densityValues.length > 0
+        ? (densityValues.reduce((sum, d) => sum + d, 0) / densityValues.length).toFixed(1)
         : "0.0";
     const averageDensityEl = document.getElementById("average-density");
-    if (averageDensityEl) {
-        averageDensityEl.innerText = `${avgDensity}`;
-    }
+    if (averageDensityEl) averageDensityEl.innerText = `${avgDensity}`;
 
-    // In case of four lanes at once 
     const isFourLanes = laneKeys.length === 4;
-    const iconSize = isFourLanes ? 12 : 18; 
-    const fontClass = isFourLanes ? "text-xs" : "text-sm"; 
-    const gapClass = isFourLanes ? "gap-0" : "gap-1"; 
+    const iconSize = isFourLanes ? 12 : 18;
+    const fontClass = isFourLanes ? "text-xs" : "text-sm";
+    const gapClass = isFourLanes ? "gap-0" : "gap-1";
 
     const lanesContainer = document.getElementById("lanes_container");
-    // tooltips
     const existingLaneTooltips = lanesContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
     existingLaneTooltips.forEach(tooltipEl => {
         const tooltipInstance = bootstrap.Tooltip.getInstance(tooltipEl);
-        if (tooltipInstance) {
-            tooltipInstance.hide(); 
-            tooltipInstance.dispose();
-        }
+        if (tooltipInstance) { tooltipInstance.hide(); tooltipInstance.dispose(); }
     });
     lanesContainer.innerHTML = "";
     laneKeys.forEach(laneKey => {
@@ -622,9 +567,7 @@ function updateUIElements(data) {
         laneImg.setAttribute("data-bs-toggle", "tooltip");
         laneImg.setAttribute("data-bs-placement", "top");
         laneImg.setAttribute("title", `Lane ${laneNumber}`);
-        if (parseInt(laneNumber) % 2 === 0) {
-            laneImg.style.transform = "rotate(180deg)";
-        }
+        if (parseInt(laneNumber) % 2 === 0) laneImg.style.transform = "rotate(180deg)";
         const laneCount = document.createElement("div");
         laneCount.className = `fw-bold ${fontClass}`;
         laneCount.innerText = laneValue;
@@ -632,22 +575,13 @@ function updateUIElements(data) {
         laneDiv.appendChild(laneCount);
         lanesContainer.appendChild(laneDiv);
     });
-
-    // Initialize tooltips for lanes container
-    const laneTooltips = lanesContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    laneTooltips.forEach(tooltipTriggerEl => {
-        new bootstrap.Tooltip(tooltipTriggerEl);
-    });
+    lanesContainer.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
     const speedsContainer = document.getElementById("speeds_container");
-    // tooltips
     const existingSpeedTooltips = speedsContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
     existingSpeedTooltips.forEach(tooltipEl => {
         const tooltipInstance = bootstrap.Tooltip.getInstance(tooltipEl);
-        if (tooltipInstance) {
-            tooltipInstance.hide(); 
-            tooltipInstance.dispose();
-        }
+        if (tooltipInstance) { tooltipInstance.hide(); tooltipInstance.dispose(); }
     });
     speedsContainer.innerHTML = "";
     laneKeys.forEach(laneKey => {
@@ -667,34 +601,23 @@ function updateUIElements(data) {
         speedImg.setAttribute("data-bs-toggle", "tooltip");
         speedImg.setAttribute("data-bs-placement", "top");
         speedImg.setAttribute("title", `Lane ${laneNumber}`);
-        if (parseInt(laneNumber) % 2 === 0) {
-            speedImg.style.transform = "rotate(180deg)";
-        }
+        if (parseInt(laneNumber) % 2 === 0) speedImg.style.transform = "rotate(180deg)";
         const speedCount = document.createElement("div");
         speedCount.className = `fw-bold ${fontClass}`;
-        speedCount.innerHTML = speedValue !== undefined && speedValue !== null 
-            ? `${Math.round(speedValue)}` 
+        speedCount.innerHTML = speedValue !== undefined && speedValue !== null
+            ? `${Math.round(speedValue)}`
             : "...";
         speedDiv.appendChild(speedImg);
         speedDiv.appendChild(speedCount);
         speedsContainer.appendChild(speedDiv);
     });
-
-    // Tooltips for speeds container
-    const speedTooltips = speedsContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    speedTooltips.forEach(tooltipTriggerEl => {
-        new bootstrap.Tooltip(tooltipTriggerEl);
-    });
+    speedsContainer.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
     const densityContainer = document.getElementById('vehicle_present');
-    // tooltips
     const existingDensityTooltips = densityContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
     existingDensityTooltips.forEach(tooltipEl => {
         const tooltipInstance = bootstrap.Tooltip.getInstance(tooltipEl);
-        if (tooltipInstance) {
-            tooltipInstance.hide(); 
-            tooltipInstance.dispose();
-        }
+        if (tooltipInstance) { tooltipInstance.hide(); tooltipInstance.dispose(); }
     });
     densityContainer.innerHTML = "";
     laneKeys.forEach(laneKey => {
@@ -716,9 +639,7 @@ function updateUIElements(data) {
         densityImg.setAttribute("data-bs-toggle", "tooltip");
         densityImg.setAttribute("data-bs-placement", "top");
         densityImg.setAttribute("title", `Lane ${laneNumber}`);
-        if (parseInt(laneNumber) % 2 === 0) {
-            densityImg.style.transform = "rotate(180deg)";
-        }
+        if (parseInt(laneNumber) % 2 === 0) densityImg.style.transform = "rotate(180deg)";
         const densityValue = document.createElement("span");
         densityValue.className = `font-weight-bolder ${fontClass}`;
         densityValue.innerText = `${density}`;
@@ -726,18 +647,12 @@ function updateUIElements(data) {
         densityDiv.appendChild(densityValue);
         densityContainer.appendChild(densityDiv);
     });
+    densityContainer.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el, { trigger: 'hover' }));
 
-    // Tooltips for density container
-    const densityTooltips = densityContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    densityTooltips.forEach(tooltipTriggerEl => {
-        new bootstrap.Tooltip(tooltipTriggerEl, {
-            trigger: 'hover' 
-        });
-    });
     if (
-    document.getElementById('nodePopupPanel') &&
-    document.getElementById('nodePopupPanel').classList.contains('active') &&
-    selectedNodeLayer
+        document.getElementById('nodePopupPanel') &&
+        document.getElementById('nodePopupPanel').classList.contains('active') &&
+        selectedNodeLayer
     ) {
         const addrEl = document.getElementById('intersection-name');
         const address = addrEl ? addrEl.textContent : '';
@@ -746,25 +661,20 @@ function updateUIElements(data) {
         }
     }
 
-    // Update flow-footer
     const speedFooter = document.getElementById('flow-footer');
     let speeds = laneKeys.map(key => data[`avg_speed_${key.split('_')[1]}`] || 0);
-    if (laneKeys.length === 1 && data.avg_speed !== undefined) {
-        speeds = [data.avg_speed];
-    }
+    if (laneKeys.length === 1 && data.avg_speed !== undefined) speeds = [data.avg_speed];
     const avgSpeed = speeds.length > 0 ? speeds.reduce((sum, s) => sum + s, 0) / speeds.length : 0;
     let flowStatus = avgSpeed > 60 ? 'smooth' : avgSpeed > 30 ? 'moderate' : 'congested';
     let flowColor = avgSpeed > 60 ? 'text-success' : avgSpeed > 30 ? 'text-warning' : 'text-danger';
     speedFooter.innerHTML = `<span class="${flowColor} font-weight-bolder">${flowStatus} </span>traffic flow`;
 
-    // Update activity-footer
     const activityFooter = document.getElementById('activity-footer');
     const totalPassed = laneKeys.reduce((sum, key) => sum + (data[key] || 0), 0);
     let activityStatus = totalPassed > 100 ? 'Active' : totalPassed > 50 ? 'Moderate' : 'Quiet';
     let activityColor = totalPassed > 100 ? 'text-danger' : totalPassed > 50 ? 'text-warning' : 'text-success';
     activityFooter.innerHTML = `<span class="${activityColor} font-weight-bolder">${activityStatus} </span>area today`;
 
-    // Update density footer
     const densityFooter = document.getElementById('density-footer');
     const sumDensity = densityValues.length > 0 ? densityValues.reduce((sum, d) => sum + d, 0).toFixed(1) : "0.0";
     const totalCapacity = selectedIntersectionCapacity * laneKeys.length;
@@ -791,9 +701,7 @@ function fetchIntersectionDetails(lat, lng) {
                 updateAlertsCard();
             }
         })
-        .catch(error => {
-            console.error("Error fetching traffic data:", error);
-        });
+        .catch(error => console.error("Error fetching traffic data:", error));
 }
 
 function getColorByDensity(density) {
@@ -820,7 +728,6 @@ const modal = new bootstrap.Modal(document.getElementById('streamModal'));
 openBtn.onclick = function () {
     if (selectedNodeLayer) {
         const nodeId = selectedNodeLayer.data.node_id;
-        console.log("stream opened for node", nodeId);
         modal.show();
         fetchCamerasForNode(nodeId);
     } else {
@@ -854,14 +761,11 @@ function fetchCamerasForNode(nodeId) {
                 cameraSelector.appendChild(option);
             });
         })
-        .catch(err => {
-            console.error("Failed to fetch cameras:", err);
-        });
+        .catch(err => console.error("Failed to fetch cameras:", err));
 }
 
 cameraSelector.addEventListener('change', function() {
-    const selectedUrl = this.value;
-    streamFrame.src = selectedUrl;
+    streamFrame.src = this.value;
 });
 
 let chartInstance = null;
@@ -876,93 +780,19 @@ myModal.addEventListener('shown.bs.modal', function() {
                 const dayData = data.find(item => item.weekday.trim() === day);
                 return dayData ? dayData.median_count : 0;
             });
-
             const ctx = document.getElementById("chart-bars").getContext("2d");
-
-            if (chartInstance) {
-                chartInstance.destroy();
-            }
-
-            // chartInstance = new Chart(ctx, {
-            //     type: "bar",
-            //     data: {
-            //         labels: labels,
-            //         datasets: [{
-            //             label: 'Median density',
-            //             data: counts,
-            //             tension: 0.4,
-            //             borderWidth: 0,
-            //             borderRadius: 4,
-            //             borderSkipped: false,
-            //             backgroundColor: "#43A047",
-            //             barThickness: 30
-            //         }]
-            //     },
-            //     options: {
-            //         responsive: false,
-            //         maintainAspectRatio: false,
-            //         plugins: {
-            //             legend: {
-            //                 display: true, 
-            //             },
-            //             tooltip: {
-            //                 callbacks: {
-            //                     label: function(context) {
-            //                         return `Median Vehicles: ${context.parsed.y}`;
-            //                     }
-            //                 }
-            //             }
-            //         },
-            //         scales: {
-            //             y: {
-            //                 beginAtZero: true,
-            //                 grid: {
-            //                     drawBorder: false,
-            //                     color: '#e5e5e5'
-            //                 },
-            //                 ticks: {
-            //                     color: "#737373",
-            //                     callback: function(value) {
-            //                         return value; 
-            //                     }
-            //                 },
-            //                 title: {
-            //                     display: true,
-            //                     text: 'Median Vehicle Count',
-            //                     color: '#737373'
-            //                 }
-            //             },
-            //             x: {
-            //                 grid: {
-            //                     display: false,
-            //                 },
-            //                 ticks: {
-            //                     color: '#737373'
-            //                 },
-            //                 title: {
-            //                     display: true,
-            //                     text: 'Weekday',
-            //                     color: '#737373'
-            //                 }
-            //             }
-            //         }
-            //     }
-            // });
+            if (chartInstance) chartInstance.destroy();
         })
         .catch(error => console.error('Error fetching data:', error));
 });
 
 function _openPopupWhenReady(data) {
-    // fetchIntersectionDetails is async; give it a short grace period so the
-    // popup receives the latest address already stored by that call.
     setTimeout(() => {
         const addrEl = document.getElementById('intersection-name');
         const address = addrEl ? addrEl.textContent : '';
         if (typeof window.openNodePopup === 'function') {
-            // Merge capacity into data if it was fetched
             const enriched = { ...data, capacity: selectedIntersectionCapacity };
             window.openNodePopup(enriched, address);
         }
-    }, 350); // 350 ms is enough for the fetch to resolve on a local network
+    }, 350);
 }
-

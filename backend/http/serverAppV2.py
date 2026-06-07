@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import os
 import psycopg2
 import psycopg2.extras
 import time
@@ -18,12 +19,17 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     """Create a new database connection."""
     try:
-        conn = psycopg2.connect(
-            host="localhost",
-            user="postgres",
-            password="admin",
-            dbname="trafficam_db"
-        )
+        database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(dsn=database_url, sslmode="require")
+        else:
+            conn = psycopg2.connect(
+                host=os.getenv("PGHOST", "localhost"),
+                user=os.getenv("PGUSER", "postgres"),
+                password=os.getenv("PGPASSWORD", "admin"),
+                dbname=os.getenv("PGDATABASE", "trafficam_db"),
+                port=int(os.getenv("PGPORT", 5432))
+            )
         conn.autocommit = True
         logger.debug("New database connection created: %s", conn)
         return conn
@@ -317,7 +323,7 @@ async def update_intersection():
             # Notify WebSocket server of the update
             async def notify_websocket_async():
                 try:
-                    async with websockets.connect("ws://192.168.1.16:8765/ws") as ws:  
+                    async with websockets.connect("ws://192.168.1.17:8765/ws") as ws:  
                         update_message = {
                             "type": "node_update",
                             "node_id": str(node_id),
@@ -594,7 +600,7 @@ def get_notifications_count():
     logger.debug("Fetching notification count for node_id=%s, date=%s", node_id, date)
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         # First, get intersection_id from nodes table
         cursor.execute("SELECT intersection_id FROM nodes WHERE id = %s", (node_id,))
         node = cursor.fetchone()
