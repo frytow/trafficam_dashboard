@@ -1,8 +1,23 @@
 // ------------------------------------------------ Initialize the map -----------------------------------------------
-let map = L.map('map').setView([36.602575, 10.122528], 9);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
-}).addTo(map);
+// ------------------------------------------------ Initialize the map -----------------------------------------------
+let map = L.map('map', {
+    zoomControl: true,
+    attributionControl: true
+}).setView([36.602575, 10.122528], 9);
+
+// IMPORTANT: Do NOT add tile layer here anymore!
+// We let theme.js handle it via initMapWithTheme()
+
+// Call this after map is created
+if (typeof window.initMapWithTheme === 'function') {
+    window.initMapWithTheme(map);
+} else {
+    // Fallback in case theme.js loads after
+    console.warn("initMapWithTheme not found, using default light tiles");
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+}
 
 // ------------------------------------------------ Initializations ---------------------------------------------------
 let ipAdress = "192.168.1.16";
@@ -43,25 +58,6 @@ function debounce(func, wait) {
 //## Debounced updateUIElements
 const debouncedUpdateUIElements = debounce(updateUIElements, 300);
 
-//## Settings panel toggle
-document.addEventListener('DOMContentLoaded', () => {
-    const settingsNavLink = document.getElementById('settings-nav-link');
-    const settingsPanel = document.querySelector('.fixed-plugin');
-    const closeButton = document.querySelector('.fixed-plugin-close-button');
-
-    if (settingsNavLink && settingsPanel) {
-        settingsNavLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            settingsPanel.classList.toggle('show');
-        });
-    }
-
-    if (closeButton && settingsPanel) {
-        closeButton.addEventListener('click', () => {
-            settingsPanel.classList.remove('show');
-        });
-    }
-});
 
 //## Initial fetch to display all intersections with markers ##
 fetch(`http://${ipAdress}:5000/get_intersections`)
@@ -371,25 +367,16 @@ function createCircleLayer(lat, lng, color, data) {
 
     circle.on('click', function () {
         if (previouslySelectedCircle && previouslySelectedCircle !== circle) {
-            previouslySelectedCircle.setStyle({
-                weight: 2,
-                dashArray: null,
-            });
+            previouslySelectedCircle.setStyle({ weight: 2, dashArray: null });
         }
-
-        circle.setStyle({
-            weight: 6,
-            dashArray: '12',
-        });
-
+        circle.setStyle({ weight: 6, dashArray: '12' });
         previouslySelectedCircle = circle;
         selectedNodeLayer = { circle, data };
-
         map.setView([lat, lng], 13);
-        fetchIntersectionDetails(lat, lng);
-        updateUIElements(data);
+        fetchIntersectionDetails(lat, lng);      // ← keep: populates hidden fields + triggers updateAlertsCard
+        updateUIElements(data);                  // ← keep: populates hidden status-bar mirrors
+        _openPopupWhenReady(data);               // ← NEW: open the node popup panel
     });
-
     return { circle, data, timeout: null };
 }
 
@@ -411,7 +398,8 @@ function createMarkerLayer(lat, lng, data) {
         selectedNodeLayer = { marker, data };
         map.setView([lat, lng], 12);
         fetchIntersectionDetails(lat, lng);
-        updateUIElements(data || { vehicles: '...', voie_1: '...', voie_2: '...', voie_3: '...', voie_4: '...' });
+        updateUIElements(data || {});
+        _openPopupWhenReady(data);   // ← NEW
     });
     return marker;
 }
@@ -746,6 +734,17 @@ function updateUIElements(data) {
             trigger: 'hover' 
         });
     });
+    if (
+    document.getElementById('nodePopupPanel') &&
+    document.getElementById('nodePopupPanel').classList.contains('active') &&
+    selectedNodeLayer
+    ) {
+        const addrEl = document.getElementById('intersection-name');
+        const address = addrEl ? addrEl.textContent : '';
+        if (typeof window.openNodePopup === 'function') {
+            window.openNodePopup({ ...selectedNodeLayer.data, capacity: selectedIntersectionCapacity }, address);
+        }
+    }
 
     // Update flow-footer
     const speedFooter = document.getElementById('flow-footer');
@@ -884,93 +883,86 @@ myModal.addEventListener('shown.bs.modal', function() {
                 chartInstance.destroy();
             }
 
-            chartInstance = new Chart(ctx, {
-                type: "bar",
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Median density',
-                        data: counts,
-                        tension: 0.4,
-                        borderWidth: 0,
-                        borderRadius: 4,
-                        borderSkipped: false,
-                        backgroundColor: "#43A047",
-                        barThickness: 30
-                    }]
-                },
-                options: {
-                    responsive: false,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true, 
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `Median Vehicles: ${context.parsed.y}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                drawBorder: false,
-                                color: '#e5e5e5'
-                            },
-                            ticks: {
-                                color: "#737373",
-                                callback: function(value) {
-                                    return value; 
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Median Vehicle Count',
-                                color: '#737373'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false,
-                            },
-                            ticks: {
-                                color: '#737373'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Weekday',
-                                color: '#737373'
-                            }
-                        }
-                    }
-                }
-            });
+            // chartInstance = new Chart(ctx, {
+            //     type: "bar",
+            //     data: {
+            //         labels: labels,
+            //         datasets: [{
+            //             label: 'Median density',
+            //             data: counts,
+            //             tension: 0.4,
+            //             borderWidth: 0,
+            //             borderRadius: 4,
+            //             borderSkipped: false,
+            //             backgroundColor: "#43A047",
+            //             barThickness: 30
+            //         }]
+            //     },
+            //     options: {
+            //         responsive: false,
+            //         maintainAspectRatio: false,
+            //         plugins: {
+            //             legend: {
+            //                 display: true, 
+            //             },
+            //             tooltip: {
+            //                 callbacks: {
+            //                     label: function(context) {
+            //                         return `Median Vehicles: ${context.parsed.y}`;
+            //                     }
+            //                 }
+            //             }
+            //         },
+            //         scales: {
+            //             y: {
+            //                 beginAtZero: true,
+            //                 grid: {
+            //                     drawBorder: false,
+            //                     color: '#e5e5e5'
+            //                 },
+            //                 ticks: {
+            //                     color: "#737373",
+            //                     callback: function(value) {
+            //                         return value; 
+            //                     }
+            //                 },
+            //                 title: {
+            //                     display: true,
+            //                     text: 'Median Vehicle Count',
+            //                     color: '#737373'
+            //                 }
+            //             },
+            //             x: {
+            //                 grid: {
+            //                     display: false,
+            //                 },
+            //                 ticks: {
+            //                     color: '#737373'
+            //                 },
+            //                 title: {
+            //                     display: true,
+            //                     text: 'Weekday',
+            //                     color: '#737373'
+            //                 }
+            //             }
+            //         }
+            //     }
+            // });
         })
         .catch(error => console.error('Error fetching data:', error));
 });
 
-function updateClock() {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const timeString = `${hours}:${minutes}:${seconds}`;
-    
-    const clockElement = document.getElementById('live-clock');
-    if (clockElement) {
-        clockElement.innerText = timeString;
-    } else {
-        console.warn("Clock display element (#live-clock) not found in the DOM");
-    }
+function _openPopupWhenReady(data) {
+    // fetchIntersectionDetails is async; give it a short grace period so the
+    // popup receives the latest address already stored by that call.
+    setTimeout(() => {
+        const addrEl = document.getElementById('intersection-name');
+        const address = addrEl ? addrEl.textContent : '';
+        if (typeof window.openNodePopup === 'function') {
+            // Merge capacity into data if it was fetched
+            const enriched = { ...data, capacity: selectedIntersectionCapacity };
+            window.openNodePopup(enriched, address);
+        }
+    }, 350); // 350 ms is enough for the fetch to resolve on a local network
 }
 
-function initClock() {
-    updateClock();
-    setInterval(updateClock, 1000);
-}
-
-document.addEventListener('DOMContentLoaded', initClock);

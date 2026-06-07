@@ -6,16 +6,27 @@ let congestionLayers = {};
 document.addEventListener('DOMContentLoaded', function () {
     const governorateSelect = document.getElementById('governorateSelect');
     governorateSelect.addEventListener('change', updateStatistics);
+    
     initializeMap();
     updateStatistics(); 
 });
 
-// Leaflet map
+// Initialize Map with theme support
 function initializeMap() {
-    map = L.map('congestion-map').setView([36.8065, 10.1815], 12); 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    map = L.map('congestion-map', {
+        zoomControl: true,
+        attributionControl: true
+    }).setView([36.8065, 10.1815], 11);
+
+    // This will be handled by theme.js
+    if (typeof window.initMapWithTheme === 'function') {
+        window.initMapWithTheme(map);
+    } else {
+        // Fallback
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+    }
 }
 
 // Fetch and update statistics based on selected governorate
