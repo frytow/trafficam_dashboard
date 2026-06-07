@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
 import psycopg2
@@ -11,6 +11,9 @@ import asyncio
 
 app = Flask(__name__)
 CORS(app)
+
+# Static file serving setup
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'frontend')
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -644,6 +647,36 @@ def get_nodes():
     except psycopg2.Error as e:
         logger.error("Error fetching nodes: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
+
+# Frontend static file serving routes
+@app.route('/')
+def dashboard():
+    return send_from_directory(os.path.join(FRONTEND_DIR, 'pages'), 'dashboard.html')
+
+@app.route('/pages/<path:filename>')
+def pages(filename):
+    return send_from_directory(os.path.join(FRONTEND_DIR, 'pages'), filename)
+
+@app.route('/js/<path:filename>')
+def js(filename):
+    return send_from_directory(os.path.join(FRONTEND_DIR, 'js'), filename)
+
+@app.route('/css/<path:filename>')
+def css(filename):
+    return send_from_directory(os.path.join(FRONTEND_DIR, 'css'), filename)
+
+@app.route('/img/<path:filename>')
+def img(filename):
+    return send_from_directory(os.path.join(FRONTEND_DIR, 'img'), filename)
+
+@app.route('/<path:filename>')
+def static_files(filename):
+    """Catch-all for any other static files in pages directory"""
+    pages_dir = os.path.join(FRONTEND_DIR, 'pages')
+    file_path = os.path.join(pages_dir, filename)
+    if os.path.isfile(file_path):
+        return send_from_directory(pages_dir, filename)
+    return jsonify({"error": "File not found"}), 404
 
 
 if __name__ == '__main__':

@@ -27,7 +27,7 @@ let nodeLayers = {};
 let markerLayers = {};
 let selectedNodeLayer = null;
 let previouslySelectedCircle = null;
-const DATA_TIMEOUT = 12000; // 12s — must be well above send interval (5s)
+const DATA_TIMEOUT = 30000; // 30s — well above send interval + DB latency
 let lastNodeId = 0;
 let recentAlerts = {};
 let ws = null;
@@ -244,7 +244,7 @@ function connectWebSocket() {
 
     ws.onclose = function(event) {
         console.warn("WebSocket connection closed:", event);
-        setTimeout(connectWebSocket, 8766);
+        setTimeout(connectWebSocket, 2000);
     };
 
     ws.onerror = function(error) {

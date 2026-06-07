@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import asyncio
 import json
@@ -22,9 +21,8 @@ except ImportError:
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 HTTP_BACKEND = os.path.join(ROOT, "backend", "http", "serverAppV2.py")
-WS_BACKEND = os.path.join(ROOT, "backend", "websocket", "app_v3.py")
-MAP_JS = os.path.join(ROOT, "frontend", "js", "my_scripts", "map_v3.js")
-DASHBOARD_HTML = os.path.join(ROOT, "frontend", "pages", "dashboard.html")
+WS_BACKEND   = os.path.join(ROOT, "backend", "websocket", "app_v3.py")
+MAP_JS       = os.path.join(ROOT, "frontend", "js", "my_scripts", "map_v3.js")
 
 
 def replace_frontend_host(host):
@@ -86,7 +84,7 @@ async def run_mock_node(host, port, latitude, longitude, camera_count, interval,
             node_id = parsed.get("data", {}).get("node_id") or parsed.get("node_id")
             if node_id is None:
                 raise RuntimeError("Config response did not return a node_id")
-            print(f"Assigned node_id={node_id}")
+            print(f"Assigned node_id={node_id}  <-- use this with --node-id next time")
 
         while True:
             payload = build_vehicle_payload(node_id, camera_count)
@@ -120,7 +118,7 @@ def build_vehicle_payload(node_id, camera_count):
     for camera_index in range(1, camera_count + 1):
         lane_count = random.randint(1, 3)
         lane_counts = [{"lane": lane, "count": random.randint(1, 30)} for lane in range(1, lane_count + 1)]
-        avg_speeds = [{"lane": lane, "speed_kmh": round(random.uniform(10, 45), 1)} for lane in range(1, lane_count + 1)]
+        avg_speeds  = [{"lane": lane, "speed_kmh": round(random.uniform(10, 45), 1)} for lane in range(1, lane_count + 1)]
         cameras.append({
             "camera_id": f"cam_{camera_index}",
             "lane_counts": lane_counts,
@@ -131,14 +129,15 @@ def build_vehicle_payload(node_id, camera_count):
 
 async def main():
     parser = argparse.ArgumentParser(description="Run the full frontend + backend demo with a mock node.")
-    parser.add_argument("--host", default=os.getenv("WEBSOCKET_HOST", "192.168.1.17"), help="Host for frontend/backend/ws connection")
-    parser.add_argument("--supabase-url", default=os.getenv("SUPABASE_DB_URL") or None, help="Optional Supabase Postgres DATABASE_URL or DATABASE_URL if using Supabase")
-    parser.add_argument("--latitude", type=float, default=36.806389, help="Mock node latitude")
-    parser.add_argument("--longitude", type=float, default=10.177222, help="Mock node longitude")
-    parser.add_argument("--camera-count", type=int, default=1, help="Mock node camera count")
-    parser.add_argument("--interval", type=float, default=5.0, help="Seconds between mock data messages")
-    parser.add_argument("--no-browser", action="store_true", help="Do not open the dashboard page automatically")
-    parser.add_argument("--send-notif", action="store_true", help="Send occasional fake notifications")
+    parser.add_argument("--host",         default=os.getenv("WEBSOCKET_HOST", "192.168.1.17"), help="Host for frontend/backend/ws connection")
+    parser.add_argument("--supabase-url", default=os.getenv("SUPABASE_DB_URL") or None,        help="Optional Supabase DATABASE_URL")
+    parser.add_argument("--latitude",     type=float, default=36.806389,  help="Mock node latitude")
+    parser.add_argument("--longitude",    type=float, default=10.177222,  help="Mock node longitude")
+    parser.add_argument("--camera-count", type=int,   default=1,          help="Number of cameras")
+    parser.add_argument("--interval",     type=float, default=5.0,        help="Seconds between mock data messages")
+    parser.add_argument("--node-id",      default=None,                   help="Existing node ID to reuse (skips creating a new node)")
+    parser.add_argument("--no-browser",   action="store_true",            help="Do not open the dashboard automatically")
+    parser.add_argument("--send-notif",   action="store_true",            help="Send occasional fake notifications")
     args = parser.parse_args()
 
     if not replace_frontend_host(args.host):
@@ -148,11 +147,9 @@ async def main():
     if args.supabase_url:
         env["SUPABASE_DB_URL"] = args.supabase_url
     env["WEBSOCKET_HOST"] = args.host
-    
-    # Set Postgres env vars from .env if they exist
-    env.setdefault("PGHOST", os.getenv("PGHOST", "localhost"))
-    env.setdefault("PGPORT", os.getenv("PGPORT", "5432"))
-    env.setdefault("PGUSER", os.getenv("PGUSER", "postgres"))
+    env.setdefault("PGHOST",     os.getenv("PGHOST",     "localhost"))
+    env.setdefault("PGPORT",     os.getenv("PGPORT",     "5432"))
+    env.setdefault("PGUSER",     os.getenv("PGUSER",     "postgres"))
     env.setdefault("PGPASSWORD", os.getenv("PGPASSWORD", "admin"))
     env.setdefault("PGDATABASE", os.getenv("PGDATABASE", "trafficam_db"))
 
@@ -175,11 +172,18 @@ async def main():
         return
 
     if not args.no_browser:
-        print("Opening dashboard in browser...")
-        webbrowser.open(Path(DASHBOARD_HTML).as_uri())
+        url = f"http://{args.host}:5000/"
+        print(f"Opening dashboard in browser: {url}")
+        webbrowser.open(url)
 
     try:
-        await run_mock_node(args.host, 8765, args.latitude, args.longitude, args.camera_count, args.interval, send_notif=args.send_notif)
+        await run_mock_node(
+            args.host, 8765,
+            args.latitude, args.longitude,
+            args.camera_count, args.interval,
+            node_id=args.node_id,
+            send_notif=args.send_notif
+        )
     except KeyboardInterrupt:
         print("Interrupted, shutting down")
     finally:

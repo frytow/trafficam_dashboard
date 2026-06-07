@@ -252,6 +252,7 @@ async def handle_message(websocket, pool):
                         speed_data[f"avg_speed_{lane_num}"] = round(avg_speed, 2)
 
                 if node_id not in clients_data:
+                    # First time seeing this node — fetch from DB (or cache from config)
                     latitude, longitude, intersection_id = await fetch_location_from_db(node_id, pool)
                     if latitude is None or longitude is None or intersection_id is None:
                         await websocket.send(json.dumps({"error": "Node ID not found in database"}))
@@ -264,16 +265,22 @@ async def handle_message(websocket, pool):
                     }
                     logger.debug(f"New node connected: {node_id} at ({latitude}, {longitude})")
                 else:
-                    latitude, longitude, intersection_id = await fetch_location_from_db(node_id, pool)
-                    if latitude is None or longitude is None or intersection_id is None:
-                        await websocket.send(json.dumps({"error": "Node ID not found in database"}))
-                        continue
-                    clients_data[node_id].update({
-                        "latitude": latitude,
-                        "longitude": longitude,
-                        "intersection_id": int(intersection_id)
-                    })
-                    logger.debug(f"Refreshed coordinates for node_id={node_id}: ({latitude}, {longitude})")
+                    # Use cached coords — only re-fetch from real DB, never every message
+                    if pool is not None:
+                        latitude, longitude, intersection_id = await fetch_location_from_db(node_id, pool)
+                        if latitude is None or longitude is None or intersection_id is None:
+                            await websocket.send(json.dumps({"error": "Node ID not found in database"}))
+                            continue
+                        clients_data[node_id].update({
+                            "latitude": latitude,
+                            "longitude": longitude,
+                            "intersection_id": int(intersection_id)
+                        })
+                    # Always read back from cache (works for both DB and demo mode)
+                    latitude = clients_data[node_id]["latitude"]
+                    longitude = clients_data[node_id]["longitude"]
+                    intersection_id = clients_data[node_id]["intersection_id"]
+                    logger.debug(f"Using cached coords for node_id={node_id}: ({latitude}, {longitude})")
 
                 response_data = {
                     "message_type": "data",
@@ -442,8 +449,8 @@ async def main():
         lambda ws: connection_handler(ws, pool),
         ipAddress,
         8765,
-        ping_interval=20,
-        ping_timeout=10,
+        ping_interval=None,
+        ping_timeout=None,
         close_timeout=5
     )
     logger.info(f"WebSocket Server started on ws://{ipAddress}:8765")
