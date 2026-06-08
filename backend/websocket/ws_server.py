@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 import websockets
 import json
 import asyncpg
@@ -77,8 +78,8 @@ async def fetch_location_from_db(node_id, pool):
 async def insert_new_node(data, pool):
     async with pool.acquire() as conn:
         async with conn.transaction():
-            latitude      = float(data["data"]["coordinates"][0]["latitude"])
-            longitude     = float(data["data"]["coordinates"][0]["longitude"])
+            latitude      = Decimal(str(data["data"]["coordinates"][0]["latitude"])).quantize(Decimal("0.000001"))
+            longitude     = Decimal(str(data["data"]["coordinates"][0]["longitude"])).quantize(Decimal("0.000001"))
             camera_count  = int(data["data"]["camera_count"])
             governorate   = data["data"].get("governorate", "Unknown")
             address       = data["data"].get("address", "Unknown Address")
@@ -87,9 +88,25 @@ async def insert_new_node(data, pool):
             node_id       = int(node_id) if node_id is not None else None
 
             intersection_result = await conn.fetchrow(
-                "SELECT id FROM intersections WHERE latitude = $1 AND longitude = $2 AND address = $3",
-                latitude, longitude, address
+                """
+                SELECT id FROM intersections
+                WHERE latitude = $1
+                  AND longitude = $2
+                LIMIT 1
+                """,
+                latitude, longitude
             )
+
+            if not intersection_result:
+                intersection_result = await conn.fetchrow(
+                    """
+                    SELECT id FROM intersections
+                    WHERE ABS(latitude - $1) < 0.000001
+                      AND ABS(longitude - $2) < 0.000001
+                    LIMIT 1
+                    """,
+                    latitude, longitude
+                )
 
             if intersection_result:
                 intersection_id = intersection_result['id']
@@ -110,14 +127,20 @@ async def insert_new_node(data, pool):
                     governorate, address, latitude, longitude, capacity
                 )
 
+            node_result = None
             if node_id:
                 node_result = await conn.fetchrow(
                     "SELECT id, intersection_id, cams FROM nodes WHERE id = $1", node_id
                 )
+                if not node_result:
+                    node_result = await conn.fetchrow(
+                        "SELECT id, intersection_id, cams FROM nodes WHERE intersection_id = $1 ORDER BY id ASC LIMIT 1",
+                        intersection_id
+                    )
             else:
                 node_result = await conn.fetchrow(
-                    "SELECT id, intersection_id, cams FROM nodes WHERE intersection_id = $1 AND cams = $2",
-                    intersection_id, camera_count
+                    "SELECT id, intersection_id, cams FROM nodes WHERE intersection_id = $1 ORDER BY id ASC LIMIT 1",
+                    intersection_id
                 )
 
             if node_result:
@@ -292,7 +315,7 @@ async def connection_handler(websocket, pool, redis):
 # ---------------------------------------------------------------------------
 
 async def main():
-    ip_address = "192.168.1.16"
+    ip_address = "172.16.9.121"
 
     # MySQL connection pool (unchanged)
     pool = await asyncpg.create_pool(

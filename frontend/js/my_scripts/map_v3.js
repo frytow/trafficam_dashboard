@@ -5,10 +5,7 @@ let map = L.map('map', {
     attributionControl: true
 }).setView([36.602575, 10.122528], 9);
 
-// IMPORTANT: Do NOT add tile layer here anymore!
-// We let theme.js handle it via initMapWithTheme()
 
-// Call this after map is created
 if (typeof window.initMapWithTheme === 'function') {
     window.initMapWithTheme(map);
 } else {
@@ -20,7 +17,7 @@ if (typeof window.initMapWithTheme === 'function') {
 }
 
 // ------------------------------------------------ Initializations ---------------------------------------------------
-let ipAdress = "192.168.1.16";
+let ipAdress = "172.16.9.121";
 
 //## marker icon
 const customIcon = L.icon({
@@ -41,6 +38,9 @@ let recentAlerts = {}; // Store the latest alert per node_id
 let ws = null; 
 let recenteredNodes = new Set(); // Track nodes that have been recentered
 let selectedIntersectionCapacity = 100;
+const badge = document.getElementById('status-badge');
+let totalNodes = 0;
+let connectedNodes = 0;
 
 //## Debounce utility for UI updates
 function debounce(func, wait) {
@@ -73,10 +73,13 @@ fetch(`http://${ipAdress}:5000/get_intersections`)
             }
         });
         console.log(`Starting polling and WebSocket connection`);
+        totalNodes = data.length;        
+        updateNodeCount();
         startPolling();
         connectWebSocket();
     })
     .catch(error => console.error("Error fetching initial intersections:", error));
+
 
 // --------------------------------------------- Polling for Node Updates ---------------------------------------
 function startPolling() {
@@ -102,7 +105,6 @@ function startPolling() {
                             if (nodeId > lastNodeId) {
                                 lastNodeId = nodeId;
                             }
-                        } else {
                             console.log(`Node ${nodeId} already exists or is active, skipping marker creation`);
                         }
                     });
@@ -120,6 +122,8 @@ function startPolling() {
             })
             .then(data => {
                 console.log("Poll intersections response:", data);
+                totalNodes = data.length;     
+                updateNodeCount();
                 data.forEach(intersection => {
                     const nodeId = intersection.node_id;
                     if (markerLayers[nodeId]) {
@@ -130,13 +134,13 @@ function startPolling() {
                             markerLayers[nodeId].setLatLng([intersection.latitude, intersection.longitude]);
                             markerLayers[nodeId].data.latitude = intersection.latitude;
                             markerLayers[nodeId].data.longitude = intersection.longitude;
-                            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId && !recenteredNodes.has(nodeId)) {
+                            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId && !recenteredNodes.has(nodeId)) {
                                 map.setView([intersection.latitude, intersection.longitude], map.getZoom());
                                 recenteredNodes.add(nodeId);
                                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
                                 console.log(`Recentered map for selected node ${nodeId} via polling`);
                             }
-                            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
+                            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId) {
                                 fetchIntersectionDetails(intersection.latitude, intersection.longitude);
                                 debouncedUpdateUIElements(markerLayers[nodeId].data);
                             }
@@ -150,13 +154,13 @@ function startPolling() {
                             nodeLayers[nodeId].circle.setLatLng([intersection.latitude, intersection.longitude]);
                             nodeLayers[nodeId].data.latitude = intersection.latitude;
                             nodeLayers[nodeId].data.longitude = intersection.longitude;
-                            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId && !recenteredNodes.has(nodeId)) {
+                            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId && !recenteredNodes.has(nodeId)) {
                                 map.setView([intersection.latitude, intersection.longitude], map.getZoom());
                                 recenteredNodes.add(nodeId);
                                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
                                 console.log(`Recentered map for selected node ${nodeId} via polling`);
                             }
-                            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
+                            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId) {
                                 fetchIntersectionDetails(intersection.latitude, intersection.longitude);
                                 debouncedUpdateUIElements(nodeLayers[nodeId].data);
                             }
@@ -178,7 +182,12 @@ function connectWebSocket() {
     // ws = new WebSocket(`ws://${ipAdress}:5000/ws`);
     ws = new WebSocket(`ws://${ipAdress}:8766`);
     
-    ws.onopen = () => console.log("Connected to WebSocket server");
+    ws.onopen = () => {
+        console.log("Connected to WebSocket server");
+        badge.textContent = 'System Live';
+        badge.classList.remove('disconnected');
+        badge.classList.add('connected');
+    }
     
     ws.onmessage = function(event) {
         let data = JSON.parse(event.data);
@@ -192,6 +201,8 @@ function connectWebSocket() {
         } else if (data.message_type === "notif") {
             showTrafficNotification(data);
         } else if (data.message_type === "new_node") {
+            connectedNodes = Object.keys(nodeLayers).length;
+            updateNodeCount();
             const nodeId = data.node_id;
             const newLat = data.latitude;
             const newLng = data.longitude;
@@ -219,7 +230,7 @@ function connectWebSocket() {
             // Show notification for new node
             showNodeNotification(data, "new_node");
 
-            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId && !recenteredNodes.has(nodeId)) {
+            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId && !recenteredNodes.has(nodeId)) {
                 map.setView([newLat, newLng], map.getZoom());
                 recenteredNodes.add(nodeId);
                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
@@ -228,7 +239,7 @@ function connectWebSocket() {
 
             map.invalidateSize();
 
-            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
+            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId) {
                 selectedNodeLayer.data.latitude = newLat;
                 selectedNodeLayer.data.longitude = newLng;
                 fetchIntersectionDetails(newLat, newLng);
@@ -257,7 +268,7 @@ function connectWebSocket() {
             // Show notification for updated node
             showNodeNotification(data, "node_update");
 
-            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId && !recenteredNodes.has(nodeId)) {
+            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId && !recenteredNodes.has(nodeId)) {
                 map.setView([newLat, newLng], map.getZoom());
                 recenteredNodes.add(nodeId);
                 setTimeout(() => recenteredNodes.delete(nodeId), 10000);
@@ -266,7 +277,7 @@ function connectWebSocket() {
 
             map.invalidateSize();
 
-            if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
+            if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId) {
                 selectedNodeLayer.data.latitude = newLat;
                 selectedNodeLayer.data.longitude = newLng;
                 fetchIntersectionDetails(newLat, newLng);
@@ -278,6 +289,9 @@ function connectWebSocket() {
     };
     
     ws.onclose = function(event) {
+        badge.textContent = 'System Disconnected';
+        badge.classList.remove('connected');
+        badge.classList.add('disconnected');
         console.warn("WebSocket connection closed:", event);
         setTimeout(connectWebSocket, 8766);
     };
@@ -285,12 +299,16 @@ function connectWebSocket() {
     ws.onerror = function(error) {
         console.error("WebSocket error:", error);
         ws.close();
+        badge.textContent = 'System Disconnected';
+        badge.classList.remove('connected');
+        badge.classList.add('disconnected');
     };
 }
 
 // ----------------------------------- layers and nodes management ----------------------------------------------
 function updateNodeData(data) {
     const nodeId = parseInt(data.node_id);
+    data.node_id = nodeId;
     const lat = data.latitude;
     const lng = data.longitude;
 
@@ -324,12 +342,16 @@ function updateNodeData(data) {
             map.removeLayer(markerLayers[nodeId]);
             delete markerLayers[nodeId];
         }
+        connectedNodes = Object.keys(nodeLayers).length;  
+        updateNodeCount();
     } else {
         console.log(`Updating circle for node ${nodeId} to lat=${lat}, lng=${lng}`);
         nodeLayers[nodeId].circle.setLatLng([lat, lng]);
         nodeLayers[nodeId].data.latitude = lat;
         nodeLayers[nodeId].data.longitude = lng;
         updateCircleLayer(nodeId, color, data);
+        connectedNodes = Object.keys(nodeLayers).length;   
+        updateNodeCount();
     }
 
     // Reset timeout for node activity
@@ -338,6 +360,8 @@ function updateNodeData(data) {
         console.log(`Node ${nodeId} inactive, removing circle`);
         map.removeLayer(nodeLayers[nodeId].circle);
         delete nodeLayers[nodeId];
+        connectedNodes = Object.keys(nodeLayers).length;   
+        updateNodeCount();
         // Only create a marker if no circle exists
         if (!markerLayers[nodeId]) {
             console.log(`Creating new marker for node ${nodeId}`);
@@ -348,8 +372,8 @@ function updateNodeData(data) {
         }
     }, DATA_TIMEOUT);
 
-    if (selectedNodeLayer && selectedNodeLayer.data.node_id === nodeId) {
-        selectedNodeLayer.data = { ...data, latitude: lat, longitude: lng };
+    if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === nodeId) {
+        selectedNodeLayer.data = { ...data, node_id: nodeId, latitude: lat, longitude: lng };
         fetchIntersectionDetails(lat, lng);
         debouncedUpdateUIElements(selectedNodeLayer.data);
     }
@@ -358,6 +382,7 @@ function updateNodeData(data) {
 }
 
 function createCircleLayer(lat, lng, color, data) {
+    data.node_id = parseInt(data.node_id);
     const circle = L.circle([lat, lng], {
         color: color,
         fillColor: color,
@@ -387,6 +412,7 @@ function updateCircleLayer(nodeId, color, data) {
 }
 
 function createMarkerLayer(lat, lng, data) {
+    data.node_id = parseInt(data.node_id);
     const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
     marker.data = data;
     marker.bindPopup(
@@ -424,7 +450,7 @@ function showTrafficNotification(data) {
                 const alertChanged = !prevAlert || prevAlert.address !== alert.address || prevAlert.timestamp !== alert.timestamp;
                 recentAlerts[data.node_id] = alert;
 
-                if (selectedNodeLayer && selectedNodeLayer.data.node_id === data.node_id) {
+                if (selectedNodeLayer && Number(selectedNodeLayer.data.node_id) === Number(data.node_id)) {
                     if (alertChanged) {
                         updateAlertsCard();
                     } else {
@@ -444,66 +470,56 @@ function showTrafficNotification(data) {
 
 function showNodeNotification(data, messageType) {
     const toastEl = document.getElementById('nodeToast');
-    const toast = bootstrap.Toast.getOrCreateInstance(toastEl);
-    const nodeId = data.node_id;
-    const lat = data.latitude;
-    const lng = data.longitude;
+    if (!toastEl) {
+        console.error("nodeToast element not found in HTML!");
+        return;
+    }
 
-    // Fetch the address for the node
+    const toast = bootstrap.Toast.getOrCreateInstance(toastEl);
+    const nodeId = parseInt(data.node_id);
+    const lat = parseFloat(data.latitude);
+    const lng = parseFloat(data.longitude);
+
+    const message = messageType === 'new_node' ? 'New node added' : 'Node activated';
+
+    // Fetch address
     fetch(`http://${ipAdress}:5000/get_address?node_id=${nodeId}`)
         .then(response => response.json())
         .then(recievedAddress => {
-            const message = messageType === 'new_node' ? 'New node added' : 'Node activated';
+            let bodyText = `${message} at unknown location`;
             if (recievedAddress.address) {
-                console.log(`Showing ${message} notification for node ${nodeId} at ${recievedAddress.address}`);
-                toastEl.querySelector('.toast-body').innerText = `${message} at ${recievedAddress.address}`;
-            } else {
-                console.log(`Showing ${message} notification for node ${nodeId} at unknown location`);
-                toastEl.querySelector('.toast-body').innerText = `${message} at unknown location`;
+                bodyText = `${message} at ${recievedAddress.address}`;
             }
 
-            // Update the toast header title dynamically
-            toastEl.querySelector('.toast-header .font-weight-bold').innerText = message;
+            toastEl.querySelector('.toast-body').innerText = bodyText;
+            toastEl.querySelector('strong').innerText = message;
 
-            toastEl.onclick = null;
+            // Click handler to jump to node
             toastEl.onclick = (event) => {
-                // To avoid triggering the click event when closing the toast
-                if (event.target.classList.contains('fa-times') || event.target.closest('.fa-times')) {
-                    return;
-                }
-                map.setView([lat, lng], 12); 
-                toast.hide(); 
-                // Select the node to update UI
-                if (markerLayers[nodeId]) {
-                    selectedNodeLayer = { marker: markerLayers[nodeId], data: markerLayers[nodeId].data };
-                    fetchIntersectionDetails(lat, lng);
-                    updateUIElements(markerLayers[nodeId].data);
-                } else if (nodeLayers[nodeId]) {
+                if (event.target.closest('.btn-close')) return;
+                
+                map.flyTo([lat, lng], 13);
+                toast.hide();
+
+                // Select the node
+                if (nodeLayers[nodeId]) {
                     selectedNodeLayer = { circle: nodeLayers[nodeId].circle, data: nodeLayers[nodeId].data };
-                    nodeLayers[nodeId].circle.setStyle({
-                        weight: 6,
-                        dashArray: '12',
-                    });
-                    if (previouslySelectedCircle && previouslySelectedCircle !== nodeLayers[nodeId].circle) {
-                        previouslySelectedCircle.setStyle({
-                            weight: 2,
-                            dashArray: null,
-                        });
-                    }
-                    previouslySelectedCircle = nodeLayers[nodeId].circle;
+                    nodeLayers[nodeId].circle.setStyle({ weight: 6, dashArray: '12' });
+                } else if (markerLayers[nodeId]) {
+                    selectedNodeLayer = { marker: markerLayers[nodeId], data: markerLayers[nodeId].data };
+                }
+
+                if (selectedNodeLayer) {
                     fetchIntersectionDetails(lat, lng);
-                    updateUIElements(nodeLayers[nodeId].data);
+                    updateUIElements(selectedNodeLayer.data);
                 }
             };
 
             toast.show();
         })
-        .catch(error => {
-            console.error("Error fetching address for node notification:", error);
-            toastEl.querySelector('.toast-body').innerText = 
-                `${messageType === 'new_node' ? 'New node added' : 'Node updated'} at unknown location`;
-            toastEl.querySelector('.toast-header .font-weight-bold').innerText = 
-                messageType === 'new_node' ? 'New node added' : 'Node updated';
+        .catch(err => {
+            console.error("Address fetch failed:", err);
+            toastEl.querySelector('.toast-body').innerText = `${message} at unknown location`;
             toast.show();
         });
 }
@@ -562,15 +578,23 @@ function updateAlertsCount() {
         });
 }
 
+function updateNodeCount() {
+    const nodeCountEl = document.getElementById('node-count');
+    if (nodeCountEl) {
+        nodeCountEl.textContent = `${connectedNodes}/${totalNodes}`;
+    }
+}
+
 function updateUIElements(data) {
-    const densityValues = [];
-    
     // Get and sort lane keys
     const laneKeys = Object.keys(data || {})
         .filter(key => key.startsWith("voie_"))
         .sort((a, b) => parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]));
 
-    // Calculate density for each lane and store for average
+    // ==================== DENSITY - Horizontal Bars ====================
+    const densityContainer = document.getElementById('vehicle_present');
+    densityContainer.innerHTML = "";
+
     laneKeys.forEach(laneKey => {
         const laneNumber = laneKey.split("_")[1];
         const counter = data[laneKey] || 0;
@@ -579,125 +603,64 @@ function updateUIElements(data) {
         if (laneKeys.length === 1 && data.avg_speed !== undefined && data.avg_speed !== null) {
             speed = data.avg_speed;
         }
-        const density = speed > 0 ? (counter / speed).toFixed(1) : "0.0";
-        densityValues.push(parseFloat(density));
+        const density = speed > 0 ? (counter / speed) : 0;
+        const densityPercent = Math.min(Math.max(density * 6, 0), 100); // Visual scaling
+
+        const densityClass = density > 40 ? 'density-high' : density > 15 ? 'density-med' : 'density-low';
+
+        const barHTML = `
+            <div class="stat-bar">
+                <span class="lane-label">L${laneNumber}</span>
+                <div class="bar-wrapper">
+                    <div class="bar ${densityClass}" style="width: ${densityPercent}%"></div>
+                </div>
+                <span class="bar-label">${density.toFixed(1)}</span>
+            </div>
+        `;
+        densityContainer.innerHTML += barHTML;
     });
 
-    // Set average density in average-density
-    const avgDensity = densityValues.length > 0 
-        ? (densityValues.reduce((sum, d) => sum + d, 0) / densityValues.length).toFixed(1) 
-        : "0.0";
-    const averageDensityEl = document.getElementById("average-density");
-    if (averageDensityEl) {
-        averageDensityEl.innerText = `${avgDensity}`;
-    }
-
-    // In case of four lanes at once 
-    const isFourLanes = laneKeys.length === 4;
-    const iconSize = isFourLanes ? 12 : 18; 
-    const fontClass = isFourLanes ? "text-xs" : "text-sm"; 
-    const gapClass = isFourLanes ? "gap-0" : "gap-1"; 
-
-    const lanesContainer = document.getElementById("lanes_container");
-    // tooltips
-    const existingLaneTooltips = lanesContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    existingLaneTooltips.forEach(tooltipEl => {
-        const tooltipInstance = bootstrap.Tooltip.getInstance(tooltipEl);
-        if (tooltipInstance) {
-            tooltipInstance.hide(); 
-            tooltipInstance.dispose();
-        }
-    });
-    lanesContainer.innerHTML = "";
-    laneKeys.forEach(laneKey => {
-        const laneNumber = laneKey.split("_")[1];
-        const laneValue = data[laneKey] || 0;
-        const laneDiv = document.createElement("div");
-        laneDiv.className = `d-flex align-items-center ${gapClass}`;
-        const laneImg = document.createElement("img");
-        laneImg.src = "../img/double-arrows.png";
-        laneImg.alt = `Lane ${laneNumber}`;
-        laneImg.width = iconSize;
-        laneImg.height = iconSize;
-        laneImg.setAttribute("data-bs-toggle", "tooltip");
-        laneImg.setAttribute("data-bs-placement", "top");
-        laneImg.setAttribute("title", `Lane ${laneNumber}`);
-        if (parseInt(laneNumber) % 2 === 0) {
-            laneImg.style.transform = "rotate(180deg)";
-        }
-        const laneCount = document.createElement("div");
-        laneCount.className = `fw-bold ${fontClass}`;
-        laneCount.innerText = laneValue;
-        laneDiv.appendChild(laneImg);
-        laneDiv.appendChild(laneCount);
-        lanesContainer.appendChild(laneDiv);
-    });
-
-    // Initialize tooltips for lanes container
-    const laneTooltips = lanesContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    laneTooltips.forEach(tooltipTriggerEl => {
-        new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-
+    // ==================== AVG SPEED ====================
     const speedsContainer = document.getElementById("speeds_container");
-    // tooltips
-    const existingSpeedTooltips = speedsContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    existingSpeedTooltips.forEach(tooltipEl => {
-        const tooltipInstance = bootstrap.Tooltip.getInstance(tooltipEl);
-        if (tooltipInstance) {
-            tooltipInstance.hide(); 
-            tooltipInstance.dispose();
-        }
-    });
     speedsContainer.innerHTML = "";
+
     laneKeys.forEach(laneKey => {
         const laneNumber = laneKey.split("_")[1];
-        const speedKey = `avg_speed_${laneNumber}`;
-        let speedValue = data[speedKey];
+        let speedValue = data[`avg_speed_${laneNumber}`];
         if (laneKeys.length === 1 && data.avg_speed !== undefined && data.avg_speed !== null) {
             speedValue = data.avg_speed;
         }
-        const speedDiv = document.createElement("div");
-        speedDiv.className = "d-flex align-items-center gap-1";
-        const speedImg = document.createElement("img");
-        speedImg.src = "../img/double-arrows.png";
-        speedImg.alt = `Speed Lane ${laneNumber}`;
-        speedImg.width = iconSize;
-        speedImg.height = iconSize;
-        speedImg.setAttribute("data-bs-toggle", "tooltip");
-        speedImg.setAttribute("data-bs-placement", "top");
-        speedImg.setAttribute("title", `Lane ${laneNumber}`);
-        if (parseInt(laneNumber) % 2 === 0) {
-            speedImg.style.transform = "rotate(180deg)";
-        }
-        const speedCount = document.createElement("div");
-        speedCount.className = `fw-bold ${fontClass}`;
-        speedCount.innerHTML = speedValue !== undefined && speedValue !== null 
-            ? `${Math.round(speedValue)}` 
-            : "...";
-        speedDiv.appendChild(speedImg);
-        speedDiv.appendChild(speedCount);
-        speedsContainer.appendChild(speedDiv);
+
+        const div = document.createElement("div");
+        div.className = "stat-bar";
+        div.innerHTML = `
+            <span class="lane-label">L${laneNumber}</span>
+            <i class="fa-solid fa-gauge-high" style="color: var(--green); width: 22px; font-size: 15px;"></i>
+            <span class="bar-label">${speedValue ? Math.round(speedValue) : '—'} <small>km/h</small></span>
+        `;
+        speedsContainer.appendChild(div);
     });
 
-    // Tooltips for speeds container
-    const speedTooltips = speedsContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    speedTooltips.forEach(tooltipTriggerEl => {
-        new bootstrap.Tooltip(tooltipTriggerEl);
-    });
+    // ==================== PASSED VEHICLES ====================
+    const vehiclesContainer = document.getElementById("lanes_container");
+    vehiclesContainer.innerHTML = "";
 
-    const densityContainer = document.getElementById('vehicle_present');
-    // tooltips
-    const existingDensityTooltips = densityContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    existingDensityTooltips.forEach(tooltipEl => {
-        const tooltipInstance = bootstrap.Tooltip.getInstance(tooltipEl);
-        if (tooltipInstance) {
-            tooltipInstance.hide(); 
-            tooltipInstance.dispose();
-        }
-    });
-    densityContainer.innerHTML = "";
     laneKeys.forEach(laneKey => {
+        const laneNumber = laneKey.split("_")[1];
+        const count = data[laneKey] || 0;
+
+        const div = document.createElement("div");
+        div.className = "stat-bar";
+        div.innerHTML = `
+            <span class="lane-label">L${laneNumber}</span>
+            <i class="fa-solid fa-car-side" style="color: var(--accent); width: 22px; font-size: 15px;"></i>
+            <span class="bar-label">${count}</span>
+        `;
+        vehiclesContainer.appendChild(div);
+    });
+
+    // ==================== FOOTER UPDATES (unchanged) ====================
+    const densityValues = laneKeys.map(laneKey => {
         const laneNumber = laneKey.split("_")[1];
         const counter = data[laneKey] || 0;
         const speedKey = `avg_speed_${laneNumber}`;
@@ -705,46 +668,8 @@ function updateUIElements(data) {
         if (laneKeys.length === 1 && data.avg_speed !== undefined && data.avg_speed !== null) {
             speed = data.avg_speed;
         }
-        const density = speed > 0 ? (counter / speed).toFixed(1) : "0.0";
-        const densityDiv = document.createElement("div");
-        densityDiv.className = "d-flex align-items-center gap-1";
-        const densityImg = document.createElement("img");
-        densityImg.src = "../img/double-arrows.png";
-        densityImg.alt = `Density Lane ${laneNumber}`;
-        densityImg.width = iconSize;
-        densityImg.height = iconSize;
-        densityImg.setAttribute("data-bs-toggle", "tooltip");
-        densityImg.setAttribute("data-bs-placement", "top");
-        densityImg.setAttribute("title", `Lane ${laneNumber}`);
-        if (parseInt(laneNumber) % 2 === 0) {
-            densityImg.style.transform = "rotate(180deg)";
-        }
-        const densityValue = document.createElement("span");
-        densityValue.className = `font-weight-bolder ${fontClass}`;
-        densityValue.innerText = `${density}`;
-        densityDiv.appendChild(densityImg);
-        densityDiv.appendChild(densityValue);
-        densityContainer.appendChild(densityDiv);
+        return speed > 0 ? parseFloat((counter / speed).toFixed(1)) : 0;
     });
-
-    // Tooltips for density container
-    const densityTooltips = densityContainer.querySelectorAll('[data-bs-toggle="tooltip"]');
-    densityTooltips.forEach(tooltipTriggerEl => {
-        new bootstrap.Tooltip(tooltipTriggerEl, {
-            trigger: 'hover' 
-        });
-    });
-    if (
-    document.getElementById('nodePopupPanel') &&
-    document.getElementById('nodePopupPanel').classList.contains('active') &&
-    selectedNodeLayer
-    ) {
-        const addrEl = document.getElementById('intersection-name');
-        const address = addrEl ? addrEl.textContent : '';
-        if (typeof window.openNodePopup === 'function') {
-            window.openNodePopup({ ...selectedNodeLayer.data, capacity: selectedIntersectionCapacity }, address);
-        }
-    }
 
     // Update flow-footer
     const speedFooter = document.getElementById('flow-footer');
@@ -772,6 +697,19 @@ function updateUIElements(data) {
     let densityStatus = densityPercentage > 80 ? 'High' : densityPercentage > 40 ? 'Moderate' : 'Low';
     let densityColor = densityPercentage > 80 ? 'text-danger' : densityPercentage > 40 ? 'text-warning' : 'text-success';
     densityFooter.innerHTML = `<span class="${densityColor} font-weight-bolder">${densityPercentage}% </span>${densityStatus} density`;
+
+    // Popup panel sync (keep your existing logic)
+    if (
+        document.getElementById('nodePopupPanel') &&
+        document.getElementById('nodePopupPanel').classList.contains('active') &&
+        selectedNodeLayer
+    ) {
+        const addrEl = document.getElementById('intersection-name');
+        const address = addrEl ? addrEl.textContent : '';
+        if (typeof window.openNodePopup === 'function') {
+            window.openNodePopup({ ...selectedNodeLayer.data, capacity: selectedIntersectionCapacity }, address);
+        }
+    }
 }
 
 function fetchIntersectionDetails(lat, lng) {
@@ -811,57 +749,80 @@ function viewAllNotifications() {
     }
 }
 
-const openBtn = document.getElementById('openModalBtn');
-const closeBtn = document.getElementById('modalCloseBtn');
+// -------------stream------------------ 
+// ==================== STREAM MODAL LOGIC ====================
+const streamModalEl = document.getElementById('streamModal');
+const streamModal = new bootstrap.Modal(streamModalEl);
 const streamFrame = document.getElementById('streamFrame');
 const cameraSelector = document.getElementById('cameraSelector');
-const modal = new bootstrap.Modal(document.getElementById('streamModal'));
+const streamIntersectionName = document.getElementById('stream_intersection_name');
 
-openBtn.onclick = function () {
-    if (selectedNodeLayer) {
-        const nodeId = selectedNodeLayer.data.node_id;
-        console.log("stream opened for node", nodeId);
-        modal.show();
-        fetchCamerasForNode(nodeId);
-    } else {
-        const toast = new bootstrap.Toast(document.getElementById('streamToast'));
-        toast.show();
+let currentNodeId = null;
+
+// Open Stream Button
+document.getElementById('openModalBtn').onclick = function () {
+    if (!selectedNodeLayer || !selectedNodeLayer.data.node_id) {
+        showToast("Please select a node first", "warning");
+        return;
     }
-};
 
-closeBtn.onclick = function() {
-    modal.hide();
+    currentNodeId = selectedNodeLayer.data.node_id;
+    streamIntersectionName.textContent = document.getElementById('intersection-name').textContent || "Selected Node";
+
+    // Reset modal
+    cameraSelector.innerHTML = '<option value="" disabled selected>Loading cameras...</option>';
     streamFrame.src = "";
+
+    streamModal.show();
+    fetchCamerasForNode(currentNodeId);
+};
+
+// Close modal - clean up
+streamModalEl.addEventListener('hidden.bs.modal', function () {
+    streamFrame.src = "";           // Stop stream
     cameraSelector.innerHTML = '<option value="" disabled selected>Select a camera</option>';
-};
+    currentNodeId = null;
+});
 
-window.onclick = function(event) {
-    if (event.target == modal) {
-        modal.hide();
-        streamFrame.src = "";
-    }
-};
-
+// Fetch cameras for the selected node
 function fetchCamerasForNode(nodeId) {
     fetch(`http://${ipAdress}:5000/get_node_cams?node_id=${nodeId}`)
-        .then(res => res.json())
+        .then(response => {
+            if (!response.ok) throw new Error("Failed to fetch cameras");
+            return response.json();
+        })
         .then(cams => {
             cameraSelector.innerHTML = '<option value="" disabled selected>Select a camera</option>';
-            cams.forEach((cam, index) => {
+
+            if (cams && cams.length > 0) {
+                cams.forEach((cam, index) => {
+                    const option = document.createElement('option');
+                    option.value = cam.ip_address || cam.url || "";   // adjust if your backend field name is different
+                    option.textContent = cam.name || `Camera ${index + 1}`;
+                    cameraSelector.appendChild(option);
+                });
+            } else {
                 const option = document.createElement('option');
-                option.value = cam.ip_address;
-                option.textContent = `Camera ${index + 1}`;
+                option.value = "";
+                option.textContent = "No cameras available";
+                option.disabled = true;
                 cameraSelector.appendChild(option);
-            });
+            }
         })
         .catch(err => {
             console.error("Failed to fetch cameras:", err);
+            cameraSelector.innerHTML = '<option value="" disabled selected>Error loading cameras</option>';
         });
 }
 
-cameraSelector.addEventListener('change', function() {
-    const selectedUrl = this.value;
-    streamFrame.src = selectedUrl;
+// Camera selection → load stream
+cameraSelector.addEventListener('change', function () {
+    const selectedUrl = this.value.trim();
+    if (selectedUrl) {
+        streamFrame.src = selectedUrl;
+    } else {
+        streamFrame.src = "";
+    }
 });
 
 let chartInstance = null;

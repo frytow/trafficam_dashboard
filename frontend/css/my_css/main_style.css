@@ -178,7 +178,7 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--green);
+  color: var(--accent2);
   font-family: var(--font-mono);
 }
 
@@ -187,8 +187,8 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
+  background: var(--accent2);
+  box-shadow: 0 0 8px var(--accent2);
   animation: pulse 2s infinite;
 }
 
@@ -263,8 +263,12 @@ body {
   gap: 7px;
 }
 
-.dark .map-chip {
+.dark .map-chip{
   background: rgba(26, 35, 60, 0.95);
+}
+.dark #governorateSelect{
+  background: rgba(26, 35, 60, 0.95);
+  color: var(--muted);
 }
 
 /* Side Panel */
@@ -345,10 +349,10 @@ body {
 
 
 #governorateSelect{
-  padding: 5px 8px;
+  padding: 7px 8px;
   border-radius: 7px;
   background-color: rgba(255,255,255,0.95);
-  color: rgba(0,0,0,0.8);
+  color: var(--muted);
   font-family: var(--font-display);
 }
 
@@ -419,4 +423,143 @@ body {
 .dark .custom-table th,
 .dark .custom-table td {
   border-color: var(--border);
+}
+
+/* system status badge */
+
+.status-badge.disconnected {
+  color: var(--accent2);
+}
+.status-badge.disconnected::before {
+  background: var(--accent2);
+  box-shadow: 0 0 8px var(--accent2);
+}
+
+.status-badge.connected {
+  color: var(--green);
+}
+.status-badge.connected::before {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+
+/* === NEW STATS BARS === */
+.density-container,
+.speed-container,
+.vehicles-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.stat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bar-wrapper {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease, background-color 0.3s;
+}
+
+.bar-label {
+  width: 42px;
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+/* Density Colors */
+.density-low  .bar { background: var(--green); }
+.density-med  .bar { background: #f4a261; }
+.density-high .bar { background: var(--accent2); }
+
+/* Lane label */
+.lane-label {
+  font-size: 11px;
+  color: var(--muted);
+  width: 28px;
+  flex-shrink: 0;
+}
+
+/* Speed & Vehicles - cleaner layout */
+.speed-container .stat-bar,
+.vehicles-container .stat-bar {
+  gap: 10px;
+}
+
+.speed-container .bar-wrapper,
+.vehicles-container .bar-wrapper {
+  height: 22px;
+  background: transparent;
+}
+
+.speed-container .bar,
+.vehicles-container .bar {
+  display: none; /* We only use icon + value for these */
+}
+
+/* =============== TOASTS - Theme Aware =============== */
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  color: var(--text);
+}
+
+.toast-header {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.dark .toast-header {
+  background: var(--surface2);
+}
+
+.toast-body {
+  color: var(--text);
+}
+
+/* Success / New Node styling */
+#nodeToast .fa-circle-plus {
+  color: var(--green);
+}
+
+/* Danger / Alert styling */
+#dangerToast {
+  border-color: var(--accent2);
+}
+
+#dangerToast .toast-header {
+  background: rgba(230, 57, 86, 0.1);
+  color: var(--accent2);
+}
+
+#dangerToast .toast-body {
+  color: var(--text);
+}
+
+.dark #dangerToast .toast-header {
+  background: rgba(230, 57, 86, 0.25);
+}
+
+/* Hover effect */
+.toast:hover {
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
 }

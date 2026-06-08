@@ -71,16 +71,75 @@ function updateClock() {
 
 
 // Theme Toggle + Map Tile Switching -------------------------------------------------------------------------------
-let mapInstance;
-let currentTileLayer;
+// =============================================
+//  THEME + MAP TILE SWITCHING
+// =============================================
+
+let mapInstance = null;
+let currentTileLayer = null;
 
 const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OpenStreetMap contributors'
 });
 
 const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap &copy; CartoDB'
+    attribution: '&copy; OpenStreetMap &copy; CartoDB'
 });
+
+function setTheme(isDark) {
+    const body = document.body;
+    const toggle = document.getElementById('themeToggle');
+
+    if (isDark) {
+        body.classList.add('dark');
+        if (toggle) toggle.innerHTML = '<i class="fa-solid fa-moon"></i>';
+    } else {
+        body.classList.remove('dark');
+        if (toggle) toggle.innerHTML = '<i class="fa-solid fa-sun"></i>';
+    }
+
+    // Switch map tiles if map exists
+    if (mapInstance) {
+        switchMapTheme(isDark);
+    }
+
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+}
+
+function switchMapTheme(isDark) {
+    if (!mapInstance) return;
+
+    // Remove current tile layer
+    if (currentTileLayer) {
+        mapInstance.removeLayer(currentTileLayer);
+    }
+
+    // Add the new one
+    currentTileLayer = isDark ? darkTiles : lightTiles;
+    currentTileLayer.addTo(mapInstance);
+}
+
+// Initialize theme
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const shouldBeDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    
+    setTheme(shouldBeDark);
+}
+
+// Expose to map script
+window.setTheme = setTheme;
+window.initMapWithTheme = function(map) {
+    mapInstance = map;
+    
+    // Apply current theme to the map
+    const isDark = document.body.classList.contains('dark');
+    currentTileLayer = isDark ? darkTiles : lightTiles;
+    currentTileLayer.addTo(map);
+    
+    console.log(`Map initialized with ${isDark ? 'dark' : 'light'} theme`);
+};
 
 function setTheme(isDark) {
   const body = document.body;
@@ -88,6 +147,7 @@ function setTheme(isDark) {
 
   if (isDark) {
     body.classList.add('dark');
+    document.getElementById("logo_img").src = "../img/logo_dark_theme.png";
     toggle.innerHTML = '<i class="fa-solid fa-moon"></i>';
     if (mapInstance && currentTileLayer) {
       mapInstance.removeLayer(currentTileLayer);
@@ -96,6 +156,7 @@ function setTheme(isDark) {
     }
   } else {
     body.classList.remove('dark');
+    document.getElementById("logo_img").src = "../img/traficam_logo_net.png";
     toggle.innerHTML = '<i class="fa-solid fa-sun"></i>';
     if (mapInstance && currentTileLayer) {
       mapInstance.removeLayer(currentTileLayer);
@@ -134,31 +195,53 @@ window.initMapWithTheme = function(map) {
   currentTileLayer.addTo(map);
 };
 
-// Dynamic Traffic Flow Gauge
-function updateTrafficFlow(percentage = 78) {
-  const offset = 94.2 - (94.2 * percentage / 100);
-  document.getElementById('flow-progress').setAttribute('stroke-dashoffset', offset);
-  document.getElementById('flow-percentage').textContent = Math.round(percentage) + '%';
 
-  const statusEl = document.getElementById('flow-status');
-  const descEl = document.getElementById('flow-desc');
+// Governorate navigation using Nominatim (no hardcoded coords)
+document.getElementById('governorateSelect').addEventListener('change', function() {
+    const selected = this.value;
+    if (!selected) return;
 
-  if (percentage > 75) {
-    statusEl.textContent = "Smooth Flow";
-    statusEl.style.color = "var(--green)";
-    descEl.textContent = "Traffic is moving well across monitored intersections";
-  } else if (percentage > 50) {
-    statusEl.textContent = "Moderate Flow";
-    statusEl.style.color = "var(--accent3)";
-    descEl.textContent = "Some congestion detected in central areas";
-  } else {
-    statusEl.textContent = "Heavy Flow";
-    statusEl.style.color = "var(--accent2)";
-    descEl.textContent = "Significant delays reported - consider alternate routes";
-  }
-}
+    // Convert value to proper search name
+    const searchName = {
+        "bardo": "Bardo, Tunis, Tunisia",
+        "manouba": "Manouba, Tunisia",
+        "Carthage": "Carthage, Tunisia",
+        "ben arous": "Ben Arous, Tunisia",
+        "nabeul": "Nabeul, Tunisia",
+        "benzart": "Bizerte, Tunisia",        // Benzart = Bizerte
+        "sousse": "Sousse, Tunisia",
+        "sfax": "Sfax, Tunisia"
+    }[selected];
 
-// Initialize
-window.addEventListener('load', () => {
-  updateTrafficFlow(78);   // Change this number dynamically later
+    if (!searchName) return;
+
+    // Show loading state
+    this.disabled = true;
+
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchName)}&limit=1`)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                const result = data[0];
+                const lat = parseFloat(result.lat);
+                const lon = parseFloat(result.lon);
+
+                map.flyTo([lat, lon], 13, {
+                    duration: 1.8,
+                    easeLinearity: 0.25
+                });
+
+                console.log(`Navigated to ${selected} (${lat}, ${lon})`);
+            } else {
+                console.warn(`No location found for ${selected}`);
+                alert("Location not found. Please try again.");
+            }
+        })
+        .catch(error => {
+            console.error("Geocoding error:", error);
+            alert("Failed to navigate. Check your internet connection.");
+        })
+        .finally(() => {
+            this.disabled = false;
+        });
 });

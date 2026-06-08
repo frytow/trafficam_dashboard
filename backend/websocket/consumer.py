@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-IP_ADDRESS     = "192.168.1.16"
+IP_ADDRESS     = "172.16.9.121"
 DASHBOARD_PORT = 8766          # dashboards connect here (map_v3.js change: ws://…:8766)
 
 STREAM_DATA    = "traffic:data"
