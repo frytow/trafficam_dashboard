@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+import os
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
@@ -7,9 +8,37 @@ import logging
 import websockets
 import json
 import asyncio
+import socket
 
-app = Flask(__name__)
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Dummy connection forces OS to choose the active network interface
+        s.connect(('8.8.8.8', 80))
+        ip_address = s.getsockname()[0]
+    except Exception:
+        ip_address = '127.0.0.1'
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+    print(f"Local IP address determined: {ip_address}")
+    return ip_address
+
+CLEAN_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+FRONTEND_DIR = os.path.join(CLEAN_BASE, 'frontend')
+
+ip_address = get_local_ip()
+
+# Serve frontend static files directly at root (dashboard accessible at http://<host>:5000/)
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
 CORS(app)
+
+
+@app.route('/')
+def serve_root_dashboard():
+    return app.send_static_file('pages/dashboard.html')
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -317,7 +346,7 @@ async def update_intersection():
             # Notify WebSocket server of the update
             async def notify_websocket_async():
                 try:
-                    async with websockets.connect("ws://172.16.9.121:8765/ws") as ws:  
+                    async with websockets.connect("ws://192.168.100.6:8765/ws") as ws:  
                         update_message = {
                             "type": "node_update",
                             "node_id": str(node_id),
@@ -594,7 +623,7 @@ def get_notifications_count():
     logger.debug("Fetching notification count for node_id=%s, date=%s", node_id, date)
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         # First, get intersection_id from nodes table
         cursor.execute("SELECT intersection_id FROM nodes WHERE id = %s", (node_id,))
         node = cursor.fetchone()

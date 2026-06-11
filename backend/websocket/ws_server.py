@@ -78,66 +78,39 @@ async def fetch_location_from_db(node_id, pool):
 async def insert_new_node(data, pool):
     async with pool.acquire() as conn:
         async with conn.transaction():
-            latitude      = Decimal(str(data["data"]["coordinates"][0]["latitude"])).quantize(Decimal("0.000001"))
-            longitude     = Decimal(str(data["data"]["coordinates"][0]["longitude"])).quantize(Decimal("0.000001"))
-            camera_count  = int(data["data"]["camera_count"])
-            governorate   = data["data"].get("governorate", "Unknown")
-            address       = data["data"].get("address", "Unknown Address")
-            capacity      = int(data["data"].get("capacity", 20))
-            node_id       = data["data"].get("node_id")
-            node_id       = int(node_id) if node_id is not None else None
+            latitude     = Decimal(str(data["data"]["coordinates"][0]["latitude"])).quantize(Decimal("0.000001"))
+            longitude    = Decimal(str(data["data"]["coordinates"][0]["longitude"])).quantize(Decimal("0.000001"))
+            camera_count = int(data["data"]["camera_count"])
+            governorate  = data["data"].get("governorate", "Unknown")
+            address      = data["data"].get("address", "Unknown Address")
+            capacity     = int(data["data"].get("capacity", 20))
+            node_id      = data["data"].get("node_id")
+            node_id      = int(node_id) if node_id is not None else None
 
-            intersection_result = await conn.fetchrow(
+            # ── Atomic upsert on the UNIQUE (latitude, longitude) constraint ──
+            # Cast $1/$2 explicitly to NUMERIC so asyncpg never sends them as FLOAT8.
+            intersection_id = await conn.fetchval(
                 """
-                SELECT id FROM intersections
-                WHERE latitude = $1
-                  AND longitude = $2
-                LIMIT 1
+                INSERT INTO intersections (governorate, address, latitude, longitude, capacity)
+                VALUES ($1, $2, $3::NUMERIC(10,6), $4::NUMERIC(10,6), $5)
+                ON CONFLICT (latitude, longitude)
+                DO UPDATE SET
+                    governorate = EXCLUDED.governorate,
+                    address     = EXCLUDED.address,
+                    capacity    = EXCLUDED.capacity
+                RETURNING id
                 """,
-                latitude, longitude
+                governorate, address, latitude, longitude, capacity
             )
 
-            if not intersection_result:
-                intersection_result = await conn.fetchrow(
-                    """
-                    SELECT id FROM intersections
-                    WHERE ABS(latitude - $1) < 0.000001
-                      AND ABS(longitude - $2) < 0.000001
-                    LIMIT 1
-                    """,
-                    latitude, longitude
-                )
-
-            if intersection_result:
-                intersection_id = intersection_result['id']
-                await conn.execute(
-                    """
-                    UPDATE intersections
-                    SET governorate=$1, address=$2, latitude=$3, longitude=$4, capacity=$5
-                    WHERE id = $6
-                    """,
-                    governorate, address, latitude, longitude, capacity, intersection_id
-                )
-            else:
-                intersection_id = await conn.fetchval(
-                    """
-                    INSERT INTO intersections (governorate, address, latitude, longitude, capacity)
-                    VALUES ($1, $2, $3, $4, $5) RETURNING id
-                    """,
-                    governorate, address, latitude, longitude, capacity
-                )
-
+            # ── Find or create the node ──────────────────────────────────────
             node_result = None
             if node_id:
                 node_result = await conn.fetchrow(
-                    "SELECT id, intersection_id, cams FROM nodes WHERE id = $1", node_id
+                    "SELECT id, intersection_id, cams FROM nodes WHERE id = $1",
+                    node_id
                 )
-                if not node_result:
-                    node_result = await conn.fetchrow(
-                        "SELECT id, intersection_id, cams FROM nodes WHERE intersection_id = $1 ORDER BY id ASC LIMIT 1",
-                        intersection_id
-                    )
-            else:
+            if not node_result:
                 node_result = await conn.fetchrow(
                     "SELECT id, intersection_id, cams FROM nodes WHERE intersection_id = $1 ORDER BY id ASC LIMIT 1",
                     intersection_id
@@ -156,6 +129,7 @@ async def insert_new_node(data, pool):
                     intersection_id, camera_count
                 )
 
+            # ── Refresh cameras ──────────────────────────────────────────────
             await conn.execute("DELETE FROM cams WHERE node_id = $1", node_id)
             for i in range(1, camera_count + 1):
                 camera_data = data["data"].get(f"camera_{i}", {})
@@ -315,7 +289,7 @@ async def connection_handler(websocket, pool, redis):
 # ---------------------------------------------------------------------------
 
 async def main():
-    ip_address = "172.16.9.121"
+    ip_address = "0.0.0.0"
 
     # MySQL connection pool (unchanged)
     pool = await asyncpg.create_pool(

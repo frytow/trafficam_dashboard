@@ -17,7 +17,7 @@ def get_local_ip():
         return ip
     except Exception as e:
         print(f"Failed to detect local IP: {e}, using 'localhost' as fallback")
-        return "localhost"
+        return "0.0.0.0"
 
 def update_js_ip(js_file_path, ip_address):
     """Update the IP address in map_v3.js."""
@@ -165,6 +165,45 @@ def update_flask_websocket_url(flask_script, ip_address):
     except Exception as e:
         print(f"Error updating {flask_script}: {e}")
 
+
+def update_consumer_ip(consumer_script, ip_address):
+    """Update the WebSocket bind address in consumer.py to 0.0.0.0."""
+    try:
+        with open(consumer_script, 'r', encoding='utf-8') as file:
+            content = file.read()
+        updated_content = re.sub(r'IP_ADDRESS\s*=\s*"[^"]*"', 'IP_ADDRESS = "0.0.0.0"', content)
+        if content == updated_content:
+            print(f"No IP_ADDRESS update needed in {consumer_script}; it may already bind to 0.0.0.0.")
+        else:
+            with open(consumer_script, 'w', encoding='utf-8') as file:
+                file.write(updated_content)
+            print(f"Updated consumer bind address in {consumer_script} to 0.0.0.0")
+    except FileNotFoundError:
+        print(f"Error: {consumer_script} not found")
+    except Exception as e:
+        print(f"Error updating {consumer_script}: {e}")
+
+
+def allow_windows_firewall_ports(ports):
+    """Add Windows firewall rules for the specified TCP ports."""
+    try:
+        port_list = ','.join(str(p) for p in ports)
+        rule_name = 'TrafficAM Dashboard WebSocket Ports'
+        command = [
+            'powershell.exe',
+            '-NoProfile',
+            '-Command',
+            f'New-NetFirewallRule -DisplayName "{rule_name}" -Direction Inbound -LocalPort {port_list} -Protocol TCP -Action Allow -Profile Private,Domain'
+        ]
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        print(f"Allowed TCP ports {port_list} through Windows Firewall.")
+    except subprocess.CalledProcessError as e:
+        print("Failed to add firewall rules. You may need to run this script as Administrator.")
+        print(e.stderr)
+    except Exception as e:
+        print(f"Error configuring firewall rules: {e}")
+
+
 def start_flask_server(flask_script):
     """Start the Flask server in a new CMD window."""
     try:
@@ -190,9 +229,9 @@ def start_websocket_server(ws_script):
 def open_dashboard(html_file, ip_address):
     """Open the dashboard HTML file in the default browser."""
     try:
-        dashboard_url = f'file://{os.path.abspath(html_file)}'
+        dashboard_url = f'http://{ip_address}:5000/'
         webbrowser.open(dashboard_url)
-        print(f"Opened {html_file} in browser at {dashboard_url}")
+        print(f"Opened dashboard in browser at {dashboard_url}")
     except Exception as e:
         print(f"Error opening {html_file}: {e}")
 
@@ -203,7 +242,8 @@ def main():
     statistics_file = r".\frontend\js\my_scripts\statistics.js"
     notif_file = r".\frontend\js\my_scripts\notifications.js"
     flask_script = r".\backend\http\serverAppV2.py"
-    websocket_script = r".\backend\websocket\app_v3.py"
+    websocket_script = r".\backend\websocket\ws_server.py"
+    consumer_script = r".\backend\websocket\consumer.py"
     html_file = r".\frontend\pages\dashboard.html"
 
     # Convert to absolute paths
@@ -217,7 +257,7 @@ def main():
     html_file = os.path.join(base_dir, html_file)
 
     # Ensure files exist
-    for file_path in [js_file, tables_file, statistics_file, notif_file, flask_script, websocket_script, html_file]:
+    for file_path in [js_file, tables_file, statistics_file, notif_file, flask_script, websocket_script, consumer_script, html_file]:
         if not os.path.exists(file_path):
             print(f"Error: {file_path} does not exist. Please check the file path.")
             return
@@ -232,10 +272,15 @@ def main():
     update_notifjs_ip(notif_file, ip_address)
     update_websocket_ip(websocket_script, ip_address)
     update_flask_websocket_url(flask_script, ip_address)
+    update_consumer_ip(consumer_script, ip_address)
+
+    # Allow local firewall access for ports 5000, 8765, and 8766
+    allow_windows_firewall_ports([5000, 8765, 8766])
 
     # Start servers
     flask_process = start_flask_server(flask_script)
     websocket_process = start_websocket_server(websocket_script)
+    consumer_process = start_websocket_server(consumer_script)
 
     # Wait for servers
     time.sleep(2)
@@ -269,6 +314,16 @@ def main():
                 print("Warning: WebSocket server did not terminate cleanly")
             except Exception as e:
                 print(f"Error terminating WebSocket server: {e}")
+        if 'consumer_process' in locals() and consumer_process:
+            try:
+                print(f"Terminating consumer process tree (PID {consumer_process.pid})...")
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(consumer_process.pid)], check=False, capture_output=True, text=True)
+                consumer_process.wait(timeout=5)
+                print("Consumer process terminated")
+            except subprocess.TimeoutExpired:
+                print("Warning: Consumer process did not terminate cleanly")
+            except Exception as e:
+                print(f"Error terminating consumer process: {e}")
         print("Shutdown complete.")
 
 if __name__ == "__main__":
