@@ -37,8 +37,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-IP_ADDRESS     = "192.168.1.16"
+IP_ADDRESS = "0.0.0.0"
 DASHBOARD_PORT = 8766          # dashboards connect here (map_v3.js change: ws://…:8766)
+# Run the dashboard websocket server on all interfaces so remote browsers can connect.
 
 STREAM_DATA    = "traffic:data"
 STREAM_NOTIF   = "traffic:notif"
