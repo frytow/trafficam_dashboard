@@ -4,8 +4,8 @@
 
 // ── Map init ──────────────────────────────────────────────────
 let map = L.map('map', {
-    zoomControl: true,
-    attributionControl: false   // hide attribution entirely
+    zoomControl: false,
+    attributionControl: false
 }).setView([36.602575, 10.122528], 9);
 
 if (typeof window.initMapWithTheme === 'function') {
