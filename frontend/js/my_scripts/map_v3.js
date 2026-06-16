@@ -1,9 +1,8 @@
 // ------------------------------------------------ Initialize the map -----------------------------------------------
 // ------------------------------------------------ Initialize the map -----------------------------------------------
 let map = L.map('map', {
-    zoomControl: false,
-    attributionControl: false,
-    zoomAnimation: true
+    zoomControl: true,
+    attributionControl: false   // hide attribution entirely
 }).setView([36.602575, 10.122528], 9);
 
 
