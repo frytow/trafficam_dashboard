@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orders — TraficCam Control Center</title>
+  <meta name="description" content="Dispatch and manage traffic control orders to field officers by location.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="../css/my_css/main_style.css" />
+
+  <style>
+    /* ── ORDERS PAGE SPECIFIC ───────────────────────────────── */
+    .orders-layout {
+      display: flex;
+      flex: 1;
+      gap: 5px;
+      padding: 5px;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── LEFT PANEL: Officer browser ───────────────────── */
+    .officers-panel {
+      width: 320px;
+      min-width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .officers-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .officers-card-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .officers-card-head-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .officers-card-title {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .officers-count-badge {
+      background: rgba(37,99,235,0.1);
+      color: var(--accent);
+      border-radius: 99px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .dark .officers-count-badge {
+      background: rgba(0,184,212,0.12);
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 7px;
+    }
+
+    .filter-select {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 11px;
+      padding: 6px 10px;
+      cursor: pointer;
+      outline: none;
+    }
+    .filter-select:focus { border-color: var(--accent); }
+
+    .search-box {
+      position: relative;
+    }
+    .search-box input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 11px;
+      padding: 6px 10px 6px 30px;
+      width: 100%;
+      outline: none;
+    }
+    .search-box input:focus { border-color: var(--accent); }
+    .search-box i {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .officers-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .officer-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: all 0.18s;
+      position: relative;
+    }
+
+    .officer-card:hover {
+      border-color: var(--accent);
+      transform: translateX(2px);
+      box-shadow: 0 2px 10px rgba(37,99,235,0.08);
+    }
+
+    .officer-card.selected {
+      border-color: var(--accent);
+      background: rgba(37,99,235,0.06);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+
+    .dark .officer-card.selected {
+      background: rgba(0,184,212,0.08);
+      border-color: var(--accent);
+    }
+
+    .officer-card-top {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 6px;
+    }
+
+    .officer-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
+    }
+
+    .officer-info { flex: 1; min-width: 0; }
+
+    .officer-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .officer-badge {
+      font-size: 10px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    .officer-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: pulse 2s infinite;
+    }
+
+    .officer-card-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .officer-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 2px 8px;
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .officer-tag i { font-size: 9px; }
+
+    .officers-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      gap: 8px;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .officers-empty i { font-size: 28px; opacity: 0.4; }
+    .officers-empty p { font-size: 12px; margin: 0; }
+
+    /* ── CENTER: Map ─────────────────────────────────────── */
+    .orders-map-wrap {
+      flex: 1;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    #orders-map {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .map-top-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 1000;
+      display: flex;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .map-pill {
+      background: rgba(255,255,255,0.95);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      pointer-events: auto;
+    }
+
+    .dark .map-pill {
+      background: rgba(17,17,17,0.92);
+    }
+
+    /* ── RIGHT PANEL: Order form ─────────────────────────── */
+    .order-panel {
+      width: 280px;
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .order-form-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .order-form-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .order-form-title {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .order-form-sub {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .order-form-body {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-label-custom {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+    }
+
+    .form-input-custom {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font-main);
+      font-size: 12px;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+
+    .form-input-custom:focus { border-color: var(--accent); }
+
+    .form-textarea-custom {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    /* Selected officer pill inside form */
+    .selected-officer-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+    }
+
+    .selected-officer-pill .avatar-sm {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .selected-officer-pill .name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+    }
+
+    .selected-officer-pill .zone {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .no-officer-hint {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 10px;
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .btn-send-order {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font-main);
+      cursor: pointer;
+      transition: all 0.18s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-send-order:hover:not(:disabled) {
+      opacity: 0.88;
+      transform: translateY(-1px);
+    }
+
+    .btn-send-order:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Recent orders log */
+    .orders-log-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .orders-log-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .orders-log-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .log-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .log-item-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .log-item-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .log-item-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 7px;
+      border-radius: 99px;
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    .log-item-status.pending { background: rgba(245,158,11,0.12); color: #d97706; }
+    .log-item-status.acknowledged { background: rgba(22,163,74,0.12); color: #16a34a; }
+    .dark .log-item-status.pending { background: rgba(244,162,97,0.15); color: var(--accent3); }
+    .dark .log-item-status.acknowledged { background: rgba(0,196,140,0.12); color: var(--green); }
+
+    .log-item-msg {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .log-item-time {
+      font-size: 9px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Officer map marker popup */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 10px !important;
+      box-shadow: var(--shadow) !important;
+      color: var(--text) !important;
+    }
+
+    .leaflet-popup-tip { background: var(--surface) !important; }
+
+    /* Status indicator colors */
+    .status-onDuty    { background: #16a34a; box-shadow: 0 0 6px #16a34a; }
+    .status-moving     { background: #2563eb; box-shadow: 0 0 6px #2563eb; }
+    .status-atIncident { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+    .status-onBreak    { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,.6); }
+    .status-offDuty    { background: #94a3b8; }
+
+    .dark .status-onDuty    { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dark .status-moving    { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .dark .status-atIncident{ background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+
+    /* Avatar colour palette */
+    .av-0 { background: linear-gradient(135deg, #2563eb, #7c3aed); }
+    .av-1 { background: linear-gradient(135deg, #16a34a, #0d9488); }
+    .av-2 { background: linear-gradient(135deg, #ef4444, #f59e0b); }
+    .av-3 { background: linear-gradient(135deg, #7c3aed, #ec4899); }
+    .av-4 { background: linear-gradient(135deg, #0d9488, #2563eb); }
+
+    /* Success toast overrides */
+    .toast-success .toast-header { background: rgba(22,163,74,0.08); color: #15803d; }
+    .dark .toast-success .toast-header { background: rgba(0,196,140,0.15); color: var(--green); }
+    .toast-success { border-color: var(--green) !important; }
+  </style>
+</head>
+
+<body>
+
+  <!-- ═══ SIDEBAR ══════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img id="logo_img" src="../img/logo_dark_theme.png" width="28" height="28" alt="TraficCam logo">
+    </div>
+
+    <a class="nav-item" title="Dashboard" href="../pages/dashboard.html">
+      <i class="fa-solid fa-table-cells-large"></i>
+    </a>
+    <a class="nav-item" title="Database" href="../pages/tables.html">
+      <i class="fa-solid fa-database"></i>
+    </a>
+    <a class="nav-item" title="Statistics" href="../pages/statistiques.html">
+      <i class="fa-solid fa-chart-line"></i>
+    </a>
+    <a class="nav-item active" title="Orders" href="../pages/orders.html">
+      <i class="fa-solid fa-paper-plane"></i>
+    </a>
+    <a class="nav-item" title="Records" href="../pages/records.html">
+      <i class="fa-solid fa-video"></i>
+    </a>
+
+    <div class="sidebar-spacer"></div>
+
+    <!-- Language Toggle -->
+    <div class="language-toggle" id="languageToggle" title="Switch to Arabic">
+      <span class="lang-label">EN</span>
+    </div>
+
+    <!-- Theme Toggle -->
+    <div class="theme-toggle" id="themeToggle" title="Toggle Light / Dark">
+      <i class="fa-solid fa-sun"></i>
+    </div>
+
+    <a class="nav-item" title="Settings" href="#">
+      <i class="fa-solid fa-gear"></i>
+    </a>
+  </aside>
+
+  <!-- ═══ APP BODY ══════════════════════════════════════════ -->
+  <div class="app-body">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <span id="conn-badge" class="status-badge">Connecting…</span>
+      <div class="topbar-sep"></div>
+      <span style="color:var(--muted);font-size:11px;">Control Center — Dispatch Orders</span>
+
+      <div class="topbar-right">
+        <div class="clock-display">
+          <span id="live-clock">--:--:--</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── ORDERS LAYOUT ───────────────────────────────────── -->
+    <div class="orders-layout">
+
+      <!-- LEFT: Officer browser -->
+      <div class="officers-panel">
+        <div class="officers-card">
+          <div class="officers-card-head">
+            <div class="officers-card-head-row">
+              <div class="officers-card-title">Field Officers</div>
+              <span class="officers-count-badge" id="officer-count">0</span>
+            </div>
+            <div class="filter-row" style="margin-bottom:7px;">
+              <select class="filter-select" id="zone-filter">
+                <option value="">All Zones</option>
+                <option value="Tunis">Tunis</option>
+                <option value="Manouba">Manouba</option>
+                <option value="Carthage">Carthage</option>
+                <option value="Ben Arous">Ben Arous</option>
+                <option value="Nabeul">Nabeul</option>
+                <option value="Bizerte">Bizerte</option>
+                <option value="Sousse">Sousse</option>
+                <option value="Sfax">Sfax</option>
+              </select>
+              <select class="filter-select" id="status-filter">
+                <option value="">All Status</option>
+                <option value="onDuty">On Duty</option>
+                <option value="moving">Moving</option>
+                <option value="atIncident">At Incident</option>
+                <option value="onBreak">On Break</option>
+                <option value="offDuty">Off Duty</option>
+              </select>
+            </div>
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="officer-search" placeholder="Search officer name or badge…" autocomplete="off">
+            </div>
+          </div>
+
+          <div class="officers-list" id="officers-list">
+            <!-- Loading state -->
+            <div class="officers-empty" id="officers-loading">
+              <i class="fa-solid fa-circle-notch fa-spin" style="font-size:22px;opacity:0.5;"></i>
+              <p>Loading officers…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: Map -->
+      <div class="orders-map-wrap">
+        <div class="map-top-bar">
+          <div class="map-pill">
+            <i class="fa-solid fa-circle-dot" style="color:var(--green);font-size:8px;"></i>
+            <span style="font-weight:700;">Officers on map</span>
+            <span style="font-family:var(--font-mono);color:var(--accent);font-weight:700;" id="map-count">0</span>
+          </div>
+          <div class="map-pill" id="selected-map-pill" style="display:none;">
+            <i class="fa-solid fa-crosshairs" style="color:var(--accent);"></i>
+            <span id="selected-map-pill-name" style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          </div>
+        </div>
+        <div id="orders-map"></div>
+      </div>
+
+      <!-- RIGHT: Order form + log -->
+      <div class="order-panel">
+
+        <!-- Order form -->
+        <div class="order-form-card">
+          <div class="order-form-head">
+            <div class="order-form-title">Send Order</div>
+            <div class="order-form-sub">Select an officer, fill in details and dispatch</div>
+          </div>
+          <div class="order-form-body">
+
+            <!-- Selected officer display -->
+            <div class="form-group">
+              <div class="form-label-custom">Selected Officer</div>
+              <div id="selected-officer-display">
+                <div class="no-officer-hint">
+                  <i class="fa-solid fa-arrow-left" style="font-size:10px;"></i>
+                  <span>Click an officer from the list</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Order type -->
+            <div class="form-group">
+              <label class="form-label-custom" for="order-type">Order Type</label>
+              <select class="form-input-custom" id="order-type">
+                <option value="deploy_to_zone">Deploy to Zone</option>
+                <option value="traffic_control">Traffic Control</option>
+                <option value="incident_response">Incident Response</option>
+                <option value="patrol">Patrol Route</option>
+                <option value="return_to_base">Return to Base</option>
+                <option value="standby">Standby</option>
+              </select>
+            </div>
+
+            <!-- Destination / location -->
+            <div class="form-group">
+              <label class="form-label-custom" for="order-location">Location / Zone</label>
+              <select class="form-input-custom" id="order-location">
+                <option value="">— Select location —</option>
+                <option value="Tunis Centre">Tunis Centre</option>
+                <option value="Habib Bourguiba Ave">Habib Bourguiba Ave</option>
+                <option value="Bardo Square">Bardo Square</option>
+                <option value="La Marsa Junction">La Marsa Junction</option>
+                <option value="Manouba Roundabout">Manouba Roundabout</option>
+                <option value="Carthage Hannibal">Carthage Hannibal</option>
+                <option value="Ben Arous Highway">Ben Arous Highway</option>
+                <option value="GP1 Highway">GP1 Highway</option>
+                <option value="Sousse Port">Sousse Port</option>
+                <option value="Sfax City Centre">Sfax City Centre</option>
+              </select>
+            </div>
+
+            <!-- Target Coordinates -->
+            <div class="form-group" style="flex-direction:row; gap:10px;">
+              <div style="flex:1;">
+                <label class="form-label-custom" for="order-lat">Latitude</label>
+                <input type="number" step="any" class="form-input-custom" id="order-lat" placeholder="e.g. 36.8065">
+              </div>
+              <div style="flex:1;">
+                <label class="form-label-custom" for="order-lng">Longitude</label>
+                <input type="number" step="any" class="form-input-custom" id="order-lng" placeholder="e.g. 10.1815">
+              </div>
+            </div>
+            <div style="font-size: 10px; color: var(--accent); margin-top: -4px; font-weight: 500;">
+              <i class="fa-solid fa-map-pin"></i> Click anywhere on the map to set coordinates automatically.
+            </div>
+
+            <!-- Priority -->
+            <div class="form-group">
+              <label class="form-label-custom" for="order-priority">Priority</label>
+              <select class="form-input-custom" id="order-priority">
+                <option value="routine">Routine</option>
+                <option value="urgent">Urgent</option>
+                <option value="emergency">Emergency</option>
+              </select>
+            </div>
+
+            <!-- Message / notes -->
+            <div class="form-group">
+              <label class="form-label-custom" for="order-message">Instructions</label>
+              <textarea class="form-input-custom form-textarea-custom"
+                id="order-message"
+                placeholder="Additional instructions for the officer…"></textarea>
+            </div>
+
+            <!-- Send button -->
+            <button class="btn-send-order" id="send-order-btn" disabled>
+              <i class="fa-solid fa-paper-plane"></i>
+              Dispatch Order
+            </button>
+
+          </div>
+        </div>
+
+        <!-- Recent orders log -->
+        <div class="orders-log-card">
+          <div class="orders-log-head">
+            <i class="fa-solid fa-clock-rotate-left" style="color:var(--accent);margin-right:5px;font-size:10px;"></i>
+            Recent Orders
+          </div>
+          <div class="orders-log-list" id="orders-log-list">
+            <div style="padding:16px;text-align:center;color:var(--muted);font-size:11px;">
+              No orders sent yet.
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /order-panel -->
+
+    </div><!-- /orders-layout -->
+  </div><!-- /app-body -->
+
+
+  <!-- ═══ SUCCESS TOAST ══════════════════════════════════════ -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+    <div id="successToast" class="toast toast-success" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
+      <div class="toast-header">
+        <i class="fa-solid fa-circle-check me-2"></i>
+        <strong class="me-auto">Order Dispatched</strong>
+        <small class="text-muted">just now</small>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+      <div class="toast-body" id="success-toast-body">Order sent successfully.</div>
+    </div>
+
+    <div id="errorToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="6000">
+      <div class="toast-header" style="background:rgba(239,68,68,0.08);color:var(--accent2);">
+        <i class="fa-solid fa-triangle-exclamation me-2"></i>
+        <strong class="me-auto">Error</strong>
+        <small class="text-muted">just now</small>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+      <div class="toast-body" id="error-toast-body">Something went wrong.</div>
+    </div>
+  </div>
+
+  <!-- ═══ SCRIPTS ══════════════════════════════════════════ -->
+  <script src="../js/my_scripts/theme.js"></script>
+  <script src="../js/my_scripts/global_incident_alerts.js"></script>
+  <script src="../js/my_scripts/orders.js"></script>
+
+</body>
+</html>

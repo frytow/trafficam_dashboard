@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
-    ipAddress = "192.168.100.6"
+    ipAddress = "192.168.1.20"
     const tableBody = document.querySelector('#intersectionsTable tbody');
     const filterBtn = document.getElementById('filterBtn');
     const governorateSelect = document.getElementById('governorateSelect');

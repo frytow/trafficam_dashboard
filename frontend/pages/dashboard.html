@@ -22,6 +22,9 @@
   <!-- Icons -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Custom CSS -->
   <link rel="stylesheet" href="../css/my_css/main_style.css" />
 </head>
@@ -48,6 +51,9 @@
     </a> -->
     <a class="nav-item" data-i18n-title="navRecords" title="Records" href="../pages/records.html">
       <i class="fa-solid fa-video"></i>
+    </a>
+    <a class="nav-item" data-i18n-title="navOrders" title="Orders" href="../pages/orders.html">
+      <i class="fa-solid fa-paper-plane"></i>
     </a>
 
     <div class="sidebar-spacer"></div>
@@ -379,8 +385,11 @@
 
   </div>
 
-  <!-- Scripts -->
+  <!-- ═══ SCRIPTS ══════════════════════════════════════════ -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="../js/my_scripts/theme.js"></script>
+  <script src="../js/my_scripts/global_incident_alerts.js"></script>
+  <script src="../js/my_scripts/dashboard.js"></script>
   <script src="../js/my_scripts/map_v3.js"></script>
 
 </body>

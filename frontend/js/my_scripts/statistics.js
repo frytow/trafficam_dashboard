@@ -1,4 +1,4 @@
-const ipAddress = "192.168.100.6";
+const ipAddress = "192.168.1.20";
 let congestionTimesChart = null;
 let predictionChart = null;
 let map = null;

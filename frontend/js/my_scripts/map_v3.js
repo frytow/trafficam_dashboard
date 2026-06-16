@@ -20,7 +20,7 @@ if (typeof window.initMapWithTheme === 'function') {
 // ------------------------------------------------ Initializations ---------------------------------------------------
 //## IP address of the backend server
 
-let ipAdress = "192.168.100.6";
+let ipAdress = "192.168.1.20";
 
 //## marker icon
 const customIcon = L.icon({

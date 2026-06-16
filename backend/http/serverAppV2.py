@@ -346,7 +346,7 @@ async def update_intersection():
             # Notify WebSocket server of the update
             async def notify_websocket_async():
                 try:
-                    async with websockets.connect("ws://192.168.100.6:8765/ws") as ws:  
+                    async with websockets.connect("ws://192.168.1.20:8765/ws") as ws:  
                         update_message = {
                             "type": "node_update",
                             "node_id": str(node_id),
