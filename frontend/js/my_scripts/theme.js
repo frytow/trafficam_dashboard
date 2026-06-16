@@ -86,69 +86,134 @@ const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x
     attribution: '&copy; OpenStreetMap &copy; CartoDB'
 });
 
-function setTheme(isDark) {
-    const body = document.body;
-    const toggle = document.getElementById('themeToggle');
+const translations = {
+  en: {
+    navDashboard: 'Dashboard',
+    navDatabase: 'Database',
+    navStatistics: 'Statistics',
+    navNotifications: 'Notifications',
+    navRecords: 'Records',
+    navSettings: 'Settings',
+    statusDisconnected: 'System Disconnected',
+    topbarLabel: 'Control Center — Dashboard',
 
-    if (isDark) {
-        body.classList.add('dark');
-        if (toggle) toggle.innerHTML = '<i class="fa-solid fa-moon"></i>';
-    } else {
-        body.classList.remove('dark');
-        if (toggle) toggle.innerHTML = '<i class="fa-solid fa-sun"></i>';
-    }
+    densityLabel: 'Density — vh/km',
+    densityFooter: 'avg density',
+    avgSpeedLabel: 'AVG Speed — km/h',
+    flowFooter: 'flow',
+    passedVehiclesLabel: 'Passed Vehicles',
+    activeAreaFooter: 'area today',
+    trafficAlertsLabel: 'Traffic Jam Alerts',
+    viewAll: 'View all →',
 
-    // Switch map tiles if map exists
-    if (mapInstance) {
-        switchMapTheme(isDark);
-    }
+    nodesLabel: 'Nodes:',
+    selectedNode: 'Selected Node',
+    noNodeSelected: 'No node selected',
 
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-}
+    camerasLabel: 'Cameras',
+    lanesLabel: 'Lanes',
+    locationLabel: 'Capacity',
+    capacity: 'Capacity',
 
-function switchMapTheme(isDark) {
-    if (!mapInstance) return;
+    currentDensity: 'Current Density',
+    status: 'Status',
+    liveStream: 'Live Stream',
+    LiveStream: 'Live Stream',
 
-    // Remove current tile layer
-    if (currentTileLayer) {
-        mapInstance.removeLayer(currentTileLayer);
-    }
+    statistics: 'Statistics',
+    trafficStatistics: 'Traffic Statistics',
+    dailyTraffic: 'Daily Traffic',
+    averageDailyDensity: 'Average daily density — last 7 days',
+    chartPlaceholder: 'Chart renders here',
+    lastUpdated: 'Last updated: just now',
+    recordsPageTitle: 'Recorded Streams',
 
-    // Add the new one
-    currentTileLayer = isDark ? darkTiles : lightTiles;
-    currentTileLayer.addTo(mapInstance);
-}
+    selectIntersection: '— Select an intersection',
+    selectCameraPrompt: 'Select a camera',
 
-// Initialize theme
-function initTheme() {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const shouldBeDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-    
-    setTheme(shouldBeDark);
-}
+    streamBtn: 'Stream',
+    statsBtn: 'Stats',
+    recordsBtn: 'Records',
 
-// Expose to map script
-window.setTheme = setTheme;
-window.initMapWithTheme = function(map) {
-    mapInstance = map;
-    
-    // Apply current theme to the map
-    const isDark = document.body.classList.contains('dark');
-    currentTileLayer = isDark ? darkTiles : lightTiles;
-    currentTileLayer.addTo(map);
-    
-    console.log(`Map initialized with ${isDark ? 'dark' : 'light'} theme`);
+    nodeDrawerTitle: 'Active Operations Nodes',
+    nodeSearchPlaceholder: 'Search node or ID…',
+
+    legendActive: 'Active',
+    legendClear: 'Clear',
+    legendAlert: 'Alert',
+
+    themeToggleTitle: 'Toggle Light / Dark',
+    languageToggleTitle: 'Switch to Arabic'
+  },
+  ar: {
+    navDashboard: 'لوحة القيادة',
+    navDatabase: 'قاعدة البيانات',
+    navStatistics: 'الإحصائيات',
+    navNotifications: 'الإشعارات',
+    navRecords: 'السجلات',
+    navSettings: 'الإعدادات',
+    statusDisconnected: 'النظام غير متصل',
+    topbarLabel: 'مركز التحكم — لوحة القيادة',
+
+    densityLabel: 'الكثافة — مركبات/كم',
+    densityFooter: 'متوسط الكثافة',
+    avgSpeedLabel: 'متوسط السرعة — كم/س',
+    flowFooter: 'التدفق',
+    passedVehiclesLabel: 'المركبات المارة',
+    activeAreaFooter: 'المنطقة اليوم',
+    trafficAlertsLabel: 'إشعارات الاختناقات',
+    viewAll: 'عرض الكل →',
+
+    nodesLabel: 'العقد:',
+    selectedNode: 'العقدة المحددة',
+    noNodeSelected: 'لم يتم اختيار عقدة',
+
+    camerasLabel: 'الكاميرات',
+    lanesLabel: 'المسارات',
+    locationLabel: 'السعة',
+    capacity: 'السعة',
+
+    currentDensity: 'الكثافة الحالية',
+    status: 'الحالة',
+    liveStream: 'البث المباشر',
+    LiveStream: 'البث المباشر',
+
+    statistics: 'الإحصائيات',
+    trafficStatistics: 'إحصائيات المرور',
+    dailyTraffic: 'المرور اليومي',
+    averageDailyDensity: 'متوسط الكثافة اليومية — آخر 7 أيام',
+    chartPlaceholder: 'يتم عرض المخطط هنا',
+    lastUpdated: 'آخر تحديث: الآن',
+    recordsPageTitle: 'التسجيلات',
+
+    selectIntersection: '— اختر تقاطعاً',
+    selectCameraPrompt: 'اختر كاميرا',
+
+    streamBtn: 'تشغيل',
+    statsBtn: 'إحصائيات',
+    recordsBtn: 'السجلات',
+
+    nodeDrawerTitle: 'عقد العمليات النشطة',
+    nodeSearchPlaceholder: 'ابحث عن عقدة أو معرف…',
+
+    legendActive: 'نشط',
+    legendClear: 'صافي',
+    legendAlert: 'تنبيه',
+
+    themeToggleTitle: 'تبديل فاتح / داكن',
+    languageToggleTitle: 'التبديل إلى الإنجليزية'
+  }
 };
 
 function setTheme(isDark) {
   const body = document.body;
   const toggle = document.getElementById('themeToggle');
+  const logo = document.getElementById('logo_img');
 
   if (isDark) {
     body.classList.add('dark');
-    document.getElementById("logo_img").src = "../img/logo_dark_theme.png";
-    toggle.innerHTML = '<i class="fa-solid fa-moon"></i>';
+    if (toggle) toggle.innerHTML = '<i class="fa-solid fa-moon"></i>';
+    if (logo) logo.src = '../img/logo_dark_theme.png';
     if (mapInstance && currentTileLayer) {
       mapInstance.removeLayer(currentTileLayer);
       currentTileLayer = darkTiles;
@@ -156,8 +221,8 @@ function setTheme(isDark) {
     }
   } else {
     body.classList.remove('dark');
-    document.getElementById("logo_img").src = "../img/traficam_logo_net.png";
-    toggle.innerHTML = '<i class="fa-solid fa-sun"></i>';
+    if (toggle) toggle.innerHTML = '<i class="fa-solid fa-sun"></i>';
+    if (logo) logo.src = '../img/traficam_logo_net.png';
     if (mapInstance && currentTileLayer) {
       mapInstance.removeLayer(currentTileLayer);
       currentTileLayer = lightTiles;
@@ -167,7 +232,89 @@ function setTheme(isDark) {
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
 }
 
-// Initialize theme on load
+function switchMapTheme(isDark) {
+  if (!mapInstance) return;
+  if (currentTileLayer) {
+    mapInstance.removeLayer(currentTileLayer);
+  }
+  currentTileLayer = isDark ? darkTiles : lightTiles;
+  currentTileLayer.addTo(mapInstance);
+}
+
+function translatePage(lang) {
+  const strings = translations[lang] || translations.en;
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (!key) return;
+    const translation = strings[key];
+    if (translation) el.textContent = translation;
+  });
+
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (!key) return;
+    const translation = strings[key];
+    if (translation) el.title = translation;
+  });
+
+  const cameraOption = document.querySelector('#cameraSelector option[disabled]');
+  if (cameraOption) {
+    cameraOption.textContent = strings.selectCameraPrompt || cameraOption.textContent;
+  }
+
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    themeToggle.title = strings.themeToggleTitle || themeToggle.title;
+  }
+}
+
+// Also translate some elements that don't use data-i18n attributes
+function translateExtras(strings) {
+  const ndTitle = document.querySelector('.nd-handle span');
+  if (ndTitle && strings.nodeDrawerTitle) ndTitle.textContent = strings.nodeDrawerTitle;
+
+  const ndSearch = document.getElementById('ndSearch');
+  if (ndSearch && strings.nodeSearchPlaceholder) ndSearch.placeholder = strings.nodeSearchPlaceholder;
+
+  const intersectionName = document.getElementById('intersection-name');
+  if (intersectionName) intersectionName.textContent = strings.selectIntersection || intersectionName.textContent;
+
+  const liveStreamHeader = document.querySelector('.alert-widget .alert-widget-header span');
+  if (liveStreamHeader && strings.LiveStream) liveStreamHeader.textContent = strings.LiveStream;
+
+  const legendActive = document.querySelector('.map-legend .map-badge.blue');
+  const legendClear = document.querySelector('.map-legend .map-badge.green');
+  const legendAlert = document.querySelector('.map-legend .map-badge.red');
+  if (legendActive && strings.legendActive) legendActive.childNodes[1] ? legendActive.childNodes[1].textContent = ' ' + strings.legendActive : legendActive.textContent = strings.legendActive;
+  if (legendClear && strings.legendClear) legendClear.childNodes[1] ? legendClear.childNodes[1].textContent = ' ' + strings.legendClear : legendClear.textContent = strings.legendClear;
+  if (legendAlert && strings.legendAlert) legendAlert.childNodes[1] ? legendAlert.childNodes[1].textContent = ' ' + strings.legendAlert : legendAlert.textContent = strings.legendAlert;
+}
+
+function setLanguage(lang) {
+  const languageToggle = document.getElementById('languageToggle');
+  const active = lang === 'ar';
+
+  document.documentElement.lang = lang;
+  document.body.classList.toggle('rtl', active);
+
+  if (languageToggle) {
+    const label = languageToggle.querySelector('.lang-label');
+    if (label) label.textContent = active ? 'AR' : 'EN';
+    languageToggle.title = active ? translations.ar.languageToggleTitle : translations.en.languageToggleTitle;
+  }
+
+  localStorage.setItem('language', lang);
+  translateAll(lang);
+}
+
+// ensure extras are translated whenever page language changes
+function translateAll(lang) {
+  translatePage(lang);
+  const strings = translations[lang] || translations.en;
+  translateExtras(strings);
+}
+
 function initTheme() {
   const savedTheme = localStorage.getItem('theme');
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -175,7 +322,28 @@ function initTheme() {
   setTheme(shouldBeDark);
 }
 
-// Toggle button
+function initLanguage() {
+  const savedLanguage = localStorage.getItem('language') || 'en';
+  setLanguage(savedLanguage);
+}
+
+// Expose to map script
+window.setTheme = setTheme;
+window.initMapWithTheme = function(map) {
+  mapInstance = map;
+  mapInstance.setView([36.8065, 10.1815], 4.5);
+  
+  setTimeout(() => {
+    mapInstance.flyTo([36.8065, 10.1815], 9, {
+      duration: 3,   // Animation duration in seconds (increase for a slower, smoother ride)
+      easeLinearity: 0.4
+    });
+  }, 500); 
+  currentTileLayer = document.body.classList.contains('dark') ? darkTiles : lightTiles;
+  currentTileLayer.addTo(map);
+};
+
+// Toggle buttons
 document.addEventListener('DOMContentLoaded', () => {
   const toggleBtn = document.getElementById('themeToggle');
   if (toggleBtn) {
@@ -183,17 +351,35 @@ document.addEventListener('DOMContentLoaded', () => {
       setTheme(!document.body.classList.contains('dark'));
     });
   }
-  
-  initTheme();
-});
 
-// Make setTheme available globally for map script if needed
-window.setTheme = setTheme;
-window.initMapWithTheme = function(map) {
-  mapInstance = map;
-  currentTileLayer = document.body.classList.contains('dark') ? darkTiles : lightTiles;
-  currentTileLayer.addTo(map);
-};
+  const languageToggle = document.getElementById('languageToggle');
+  if (languageToggle) {
+    languageToggle.addEventListener('click', () => {
+      const currentLang = localStorage.getItem('language') || 'en';
+      setLanguage(currentLang === 'ar' ? 'en' : 'ar');
+    });
+  }
+
+  const recordsModalBtn = document.getElementById('recordsModalBtn');
+  if (recordsModalBtn) {
+    recordsModalBtn.addEventListener('click', () => {
+      // Try stream modal intersection name first, fall back to intersection-name
+      const streamNameEl = document.getElementById('stream_intersection_name');
+      const intersectionEl = document.getElementById('intersection-name');
+      let name = '';
+      if (streamNameEl && streamNameEl.textContent && streamNameEl.textContent.trim() && !streamNameEl.textContent.includes('Select')) {
+        name = streamNameEl.textContent.trim();
+      } else if (intersectionEl && intersectionEl.textContent) {
+        name = intersectionEl.textContent.trim();
+      }
+      const target = '../pages/records.html' + (name ? '?node=' + encodeURIComponent(name) : '');
+      window.location.href = target;
+    });
+  }
+
+  initTheme();
+  initLanguage();
+});
 
 
 // Governorate navigation using Nominatim (no hardcoded coords)
@@ -245,3 +431,5 @@ document.getElementById('governorateSelect').addEventListener('change', function
             this.disabled = false;
         });
 });
+
+

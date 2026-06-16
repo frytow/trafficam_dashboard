@@ -1,8 +1,9 @@
 // ------------------------------------------------ Initialize the map -----------------------------------------------
 // ------------------------------------------------ Initialize the map -----------------------------------------------
 let map = L.map('map', {
-    zoomControl: true,
-    attributionControl: true
+    zoomControl: false,
+    attributionControl: false,
+    zoomAnimation: true
 }).setView([36.602575, 10.122528], 9);
 
 
@@ -77,6 +78,8 @@ fetch(`http://${ipAdress}:5000/get_intersections`)
         console.log(`Starting polling and WebSocket connection`);
         totalNodes = data.length;        
         updateNodeCount();
+        selectDefaultNode();
+        updateAlertWidget();
         startPolling();
         connectWebSocket();
     })
@@ -403,6 +406,7 @@ function createCircleLayer(lat, lng, color, data) {
         fetchIntersectionDetails(lat, lng);      // ← keep: populates hidden fields + triggers updateAlertsCard
         updateUIElements(data);                  // ← keep: populates hidden status-bar mirrors
         _openPopupWhenReady(data);               // ← NEW: open the node popup panel
+        updateAlertWidget();
     });
     return { circle, data, timeout: null };
 }
@@ -428,6 +432,7 @@ function createMarkerLayer(lat, lng, data) {
         fetchIntersectionDetails(lat, lng);
         updateUIElements(data || {});
         _openPopupWhenReady(data);   // ← NEW
+        updateAlertWidget();
     });
     return marker;
 }
@@ -500,7 +505,7 @@ function showNodeNotification(data, messageType) {
             toastEl.onclick = (event) => {
                 if (event.target.closest('.btn-close')) return;
                 
-                map.flyTo([lat, lng], 13);
+                map.flyTo([lat, lng], 13, {duration: 1.8,easeLinearity: 0.25});
                 toast.hide();
 
                 // Select the node
@@ -514,6 +519,7 @@ function showNodeNotification(data, messageType) {
                 if (selectedNodeLayer) {
                     fetchIntersectionDetails(lat, lng);
                     updateUIElements(selectedNodeLayer.data);
+                    updateAlertWidget();
                 }
             };
 
@@ -535,6 +541,7 @@ function updateAlertsCard() {
     if (!selectedNodeLayer) {
         alertsContainer.innerHTML = `<span class="text-sm">No alerts available</span>`;
         alertsCountContainer.innerHTML = `<p class="mb-0 text-sm"><span class="text-danger font-weight-bolder">0 alerts</span> today</p>`;
+        updateAlertWidget();
         return;
     }
 
@@ -550,11 +557,13 @@ function updateAlertsCard() {
                 ? `<span class="text-sm"><strong class="text-danger">${alert.timestamp}</strong>: ${alert.address}</span>`
                 : `<span class="text-sm">No alerts available</span>`;
             alertsCountContainer.innerHTML = `<p class="mb-0 text-sm"><span class="text-danger font-weight-bolder">${alertCount} ${alertText}</span> today</p>`;
+            updateAlertWidget();
         })
         .catch(error => {
             console.error("Error fetching notification count:", error);
             alertsContainer.innerHTML = `<span class="text-sm">Error loading alerts</span>`;
             alertsCountContainer.innerHTML = `<p class="mb-0 text-sm"><span class="text-danger font-weight-bolder">0 alerts</span> today</p>`;
+            updateAlertWidget();
         });
 }
 
@@ -751,6 +760,130 @@ function viewAllNotifications() {
     }
 }
 
+function getSelectedNodeId() {
+    return selectedNodeLayer && selectedNodeLayer.data && selectedNodeLayer.data.node_id ? selectedNodeLayer.data.node_id : null;
+}
+
+function selectNodeById(nodeId) {
+    const activeLayer = nodeLayers[nodeId];
+    const inactiveMarker = markerLayers[nodeId];
+    if (!activeLayer && !inactiveMarker) return false;
+
+    if (previouslySelectedCircle && previouslySelectedCircle !== (activeLayer && activeLayer.circle)) {
+        previouslySelectedCircle.setStyle({ weight: 2, dashArray: null });
+        previouslySelectedCircle = null;
+    }
+
+    if (activeLayer) {
+        selectedNodeLayer = { circle: activeLayer.circle, data: activeLayer.data };
+        activeLayer.circle.setStyle({ weight: 6, dashArray: '12' });
+        previouslySelectedCircle = activeLayer.circle;
+    } else {
+        selectedNodeLayer = { marker: inactiveMarker, data: inactiveMarker.data };
+    }
+
+    const lat = selectedNodeLayer.data.latitude;
+    const lng = selectedNodeLayer.data.longitude;
+    if (lat && lng) {
+        map.setView([lat, lng], 13);
+        fetchIntersectionDetails(lat, lng);
+        updateUIElements(selectedNodeLayer.data);
+        _openPopupWhenReady(selectedNodeLayer.data);
+        updateAlertWidget();
+    }
+    return true;
+}
+
+function selectDefaultNode() {
+    if (selectedNodeLayer) return;
+    const activeIds = Object.keys(nodeLayers).map(Number).sort((a, b) => a - b);
+    if (activeIds.length > 0) {
+        return selectNodeById(activeIds[0]);
+    }
+    const inactiveIds = Object.keys(markerLayers).map(Number).sort((a, b) => a - b);
+    if (inactiveIds.length > 0) {
+        return selectNodeById(inactiveIds[0]);
+    }
+    return false;
+}
+
+function isSelectedNodeActive() {
+    const nodeId = getSelectedNodeId();
+    return nodeId !== null && nodeLayers[nodeId] && nodeLayers[nodeId].circle;
+}
+
+function renderAlertWidgetPlaceholder(message, submessage = "") {
+    if (!alertListEl) return;
+    alertListEl.innerHTML = `
+        <div class="alert-widget-empty">
+            <div>${message}</div>
+            ${submessage ? `<div style="margin-top:6px;font-size:11px;">${submessage}</div>` : ''}
+        </div>
+    `;
+}
+
+function clearAlertWidgetStream() {
+    if (!alertListEl) return;
+    alertListEl.innerHTML = '';
+    alertWidgetStreamFrame = null;
+    alertWidgetCameraOptions = null;
+}
+
+function setAlertWidgetStream(url, cameraName = "Camera 1") {
+    if (!alertListEl) return;
+    if (!alertWidgetStreamFrame) {
+        alertListEl.innerHTML = `
+                <div class="alert-stream-card">
+                    <iframe id="alertWidgetStreamFrame" src="" title="Node stream preview" allowfullscreen
+                        style="border:0;width:100%;height:100%;display:block;pointer-events:none;"></iframe>
+                </div>
+            `;
+        alertWidgetStreamFrame = document.getElementById('alertWidgetStreamFrame');
+    }
+    if (alertWidgetStreamFrame) {
+        alertWidgetStreamFrame.src = url || "about:blank";
+    }
+}
+
+function updateAlertWidget() {
+    if (!alertListEl) return;
+
+    const nodeId = getSelectedNodeId();
+
+    // If no node or node is inactive, clear any existing stream first, then show message
+    if (!nodeId) {
+        clearAlertWidgetStream();
+        if (selectDefaultNode()) return;
+        renderAlertWidgetPlaceholder("No node selected.", "Select a node on the map to start live streaming.");
+        return;
+    }
+
+    if (!isSelectedNodeActive()) {
+        clearAlertWidgetStream();
+        renderAlertWidgetPlaceholder(`Node ${nodeId} is inactive.`, "Live stream is unavailable until the node becomes active.");
+        return;
+    }
+
+    // Only skip reload if the stream is already showing for the same active node
+    if (alertWidgetStreamFrame && alertWidgetStreamFrame.src && alertWidgetStreamFrame.src !== "about:blank") return;
+
+    renderAlertWidgetPlaceholder(`Loading live stream for node ${nodeId}...`);
+    fetchCamerasForNode(nodeId, { mode: 'widget' });
+}
+
+const alertListEl = document.getElementById('alert-list');
+let alertWidgetStreamFrame = null;
+let alertWidgetCameraOptions = null;
+
+const alertWidgetEl = document.getElementById('alert-widget');
+if (alertWidgetEl) {
+    alertWidgetEl.addEventListener('click', () => {
+        if (!selectedNodeLayer || !selectedNodeLayer.data.node_id) return;
+        if (!isSelectedNodeActive()) return;
+        document.getElementById('openModalBtn').click();
+    });
+}
+
 // -------------stream------------------ 
 // ==================== STREAM MODAL LOGIC ====================
 const streamModalEl = document.getElementById('streamModal');
@@ -787,33 +920,57 @@ streamModalEl.addEventListener('hidden.bs.modal', function () {
 });
 
 // Fetch cameras for the selected node
-function fetchCamerasForNode(nodeId) {
-    fetch(`http://${ipAdress}:5000/get_node_cams?node_id=${nodeId}`)
+function fetchCamerasForNode(nodeId, options = {}) {
+    const widgetMode = options.mode === 'widget';
+    return fetch(`http://${ipAdress}:5000/get_node_cams?node_id=${nodeId}`)
         .then(response => {
             if (!response.ok) throw new Error("Failed to fetch cameras");
             return response.json();
         })
         .then(cams => {
-            cameraSelector.innerHTML = '<option value="" disabled selected>Select a camera</option>';
-
-            if (cams && cams.length > 0) {
-                cams.forEach((cam, index) => {
-                    const option = document.createElement('option');
-                    option.value = cam.ip_address || cam.url || "";   // adjust if your backend field name is different
-                    option.textContent = cam.name || `Camera ${index + 1}`;
-                    cameraSelector.appendChild(option);
-                });
-            } else {
-                const option = document.createElement('option');
-                option.value = "";
-                option.textContent = "No cameras available";
-                option.disabled = true;
-                cameraSelector.appendChild(option);
+            if (widgetMode) {
+                if (cams && cams.length > 0) {
+                    const firstCamUrl = cams[0].ip_address || cams[0].url || "";
+                    const cameraName = cams[0].name || `Camera 1`;
+                    if (firstCamUrl) {
+                        setAlertWidgetStream(firstCamUrl, cameraName);
+                    } else {
+                        renderAlertWidgetPlaceholder(`No valid camera URL found for node ${nodeId}.`, "Open the stream modal to verify camera configuration.");
+                    }
+                } else {
+                    renderAlertWidgetPlaceholder(`No cameras available for node ${nodeId}.`, "Open the stream modal to check available feeds.");
+                }
             }
+
+            if (!widgetMode) {
+                cameraSelector.innerHTML = '<option value="" disabled selected>Select a camera</option>';
+
+                if (cams && cams.length > 0) {
+                    cams.forEach((cam, index) => {
+                        const option = document.createElement('option');
+                        option.value = cam.ip_address || cam.url || "";   // adjust if your backend field name is different
+                        option.textContent = cam.name || `Camera ${index + 1}`;
+                        cameraSelector.appendChild(option);
+                    });
+                } else {
+                    const option = document.createElement('option');
+                    option.value = "";
+                    option.textContent = "No cameras available";
+                    option.disabled = true;
+                    cameraSelector.appendChild(option);
+                }
+            }
+
+            return cams;
         })
         .catch(err => {
             console.error("Failed to fetch cameras:", err);
-            cameraSelector.innerHTML = '<option value="" disabled selected>Error loading cameras</option>';
+            if (widgetMode) {
+                renderAlertWidgetPlaceholder(`Unable to load stream for node ${nodeId}.`, "Try again later or open the stream modal.");
+            } else {
+                cameraSelector.innerHTML = '<option value="" disabled selected>Error loading cameras</option>';
+            }
+            return [];
         });
 }
 
@@ -846,71 +1003,71 @@ myModal.addEventListener('shown.bs.modal', function() {
                 chartInstance.destroy();
             }
 
-            // chartInstance = new Chart(ctx, {
-            //     type: "bar",
-            //     data: {
-            //         labels: labels,
-            //         datasets: [{
-            //             label: 'Median density',
-            //             data: counts,
-            //             tension: 0.4,
-            //             borderWidth: 0,
-            //             borderRadius: 4,
-            //             borderSkipped: false,
-            //             backgroundColor: "#43A047",
-            //             barThickness: 30
-            //         }]
-            //     },
-            //     options: {
-            //         responsive: false,
-            //         maintainAspectRatio: false,
-            //         plugins: {
-            //             legend: {
-            //                 display: true, 
-            //             },
-            //             tooltip: {
-            //                 callbacks: {
-            //                     label: function(context) {
-            //                         return `Median Vehicles: ${context.parsed.y}`;
-            //                     }
-            //                 }
-            //             }
-            //         },
-            //         scales: {
-            //             y: {
-            //                 beginAtZero: true,
-            //                 grid: {
-            //                     drawBorder: false,
-            //                     color: '#e5e5e5'
-            //                 },
-            //                 ticks: {
-            //                     color: "#737373",
-            //                     callback: function(value) {
-            //                         return value; 
-            //                     }
-            //                 },
-            //                 title: {
-            //                     display: true,
-            //                     text: 'Median Vehicle Count',
-            //                     color: '#737373'
-            //                 }
-            //             },
-            //             x: {
-            //                 grid: {
-            //                     display: false,
-            //                 },
-            //                 ticks: {
-            //                     color: '#737373'
-            //                 },
-            //                 title: {
-            //                     display: true,
-            //                     text: 'Weekday',
-            //                     color: '#737373'
-            //                 }
-            //             }
-            //         }
-            //     }
-            // });
+            chartInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Median density',
+                        data: counts,
+                        tension: 0.4,
+                        borderWidth: 0,
+                        borderRadius: 4,
+                        borderSkipped: false,
+                        backgroundColor: "#43A047",
+                        barThickness: 30
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true, 
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Median Vehicles: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                drawBorder: false,
+                                color: '#e5e5e5'
+                            },
+                            ticks: {
+                                color: "#737373",
+                                callback: function(value) {
+                                    return value; 
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Median Vehicle Count',
+                                color: '#737373'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                            },
+                            ticks: {
+                                color: '#737373'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Weekday',
+                                color: '#737373'
+                            }
+                        }
+                    }
+                }
+            });
         })
         .catch(error => console.error('Error fetching data:', error));
 });
@@ -929,3 +1086,98 @@ function _openPopupWhenReady(data) {
     }, 350); // 350 ms is enough for the fetch to resolve on a local network
 }
 
+
+// ─── NODE DRAWER ─────────────────────────────────
+function populateNodeDrawer(nodesList) {
+  const container = document.getElementById('ndList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!nodesList || nodesList.length === 0) {
+    container.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:4px 0">No nodes found.</div>`;
+    return;
+  }
+
+  nodesList.forEach(nodeId => {
+    const layer = nodeLayers[nodeId] || null;
+    const markerLayer = markerLayers[nodeId] || null;
+    const data = layer ? layer.data : (markerLayer ? markerLayer.data : null);
+    const isActive = !!layer;
+
+    const badgeColor = isActive ? 'var(--green)' : 'var(--muted)';
+    const badgeBg   = isActive ? 'rgba(34,197,94,0.1)' : 'rgba(100,116,139,0.1)';
+    const badgeText = isActive ? 'Active' : 'Inactive';
+
+    const card = document.createElement('div');
+    card.className = 'nd-card';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <span class="nd-card-badge" style="background:${badgeBg};color:${badgeColor}">${badgeText}</span>
+        <span class="nd-card-id">N-${nodeId}</span>
+      </div>
+      <div class="nd-card-title">Node ${nodeId}</div>
+      <div class="nd-card-meta"><i class="fa-solid fa-location-dot"></i> ${data ? `${parseFloat(data.latitude).toFixed(4)}, ${parseFloat(data.longitude).toFixed(4)}` : '—'}</div>
+    `;
+    card.onclick = () => {
+      if (!selectNodeById(nodeId)) {
+        const target = layer || markerLayer;
+        if (!target) return;
+        const lat = target.data?.latitude;
+        const lng = target.data?.longitude;
+        if (lat && lng) {
+          map.setView([lat, lng], 14);
+          selectedNodeLayer = layer
+            ? { circle: layer.circle, data: layer.data }
+            : { marker: markerLayer, data: markerLayer.data };
+          fetchIntersectionDetails(lat, lng);
+          updateUIElements(target.data || {});
+          updateAlertWidget();
+        }
+      }
+      // close drawer after selection
+      document.getElementById('nodeDrawer').classList.remove('open');
+    };
+    container.appendChild(card);
+  });
+}
+
+function refreshNodeDrawer() {
+  // Collect all known node IDs (active circles + inactive markers)
+  const allIds = new Set([
+    ...Object.keys(nodeLayers).map(Number),
+    ...Object.keys(markerLayers).map(Number)
+  ]);
+  const sorted = [...allIds].sort((a, b) => a - b);
+  populateNodeDrawer(sorted);
+}
+
+// Toggle drawer via the node-count chip
+const nodeCountChip = document.getElementById('nodeCountChip');
+if (nodeCountChip) {
+  nodeCountChip.addEventListener('click', () => {
+    const drawer = document.getElementById('nodeDrawer');
+    const isOpen = drawer.classList.toggle('open');
+    if (isOpen) refreshNodeDrawer();
+  });
+}
+
+// Close button inside drawer
+const ndClose = document.getElementById('ndClose');
+if (ndClose) {
+  ndClose.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('nodeDrawer').classList.remove('open');
+  });
+}
+
+// Search filter
+const ndSearch = document.getElementById('ndSearch');
+if (ndSearch) {
+  ndSearch.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    const container = document.getElementById('ndList');
+    container.querySelectorAll('.nd-card').forEach(card => {
+      card.style.display = card.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}   
