@@ -4,10 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TraficCam — Control Center</title>
+  <!-- in <head> -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -26,279 +28,346 @@
 
 <body>
 
-  <!-- SIDEBAR -->
+  <!-- ═══ SIDEBAR ══════════════════════════════════════════ -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <img id="logo_img" src="../img/logo_dark_theme.png" width="30" height="30" alt="logo">
+      <img id="logo_img" src="../img/logo_dark_theme.png" width="28" height="28" alt="TraficCam logo">
     </div>
-    <nav class="sidebar-nav">
-      <a class="nav-item active" title="Dashboard" href="#"><i class="fa-solid fa-table-cells-large"></i></a>
-      <a class="nav-item" title="Database" href="../pages/tables.html"><i class="fa-solid fa-database"></i></a>
-      <a class="nav-item" title="Statistics" href="../pages/statistiques.html"><i class="fa-solid fa-chart-line"></i></a>
-      <a class="nav-item" title="Notifications" href="../pages/notifications.html"><i class="fa-solid fa-bell"></i></a>
-    </nav>
-    <div class="sidebar-bottom">
-      <div class="theme-toggle" id="themeToggle" title="Toggle Light / Dark">
-        <i class="fa-solid fa-sun"></i>
-      </div>
-      <a class="nav-item" title="Settings" href="#"><i class="fa-solid fa-gear"></i></a>
+
+    <a class="nav-item active" data-i18n-title="navDashboard" title="Dashboard" href="#">
+      <i class="fa-solid fa-table-cells-large"></i>
+    </a>
+    <a class="nav-item" data-i18n-title="navDatabase" title="Database" href="../pages/tables.html">
+      <i class="fa-solid fa-database"></i>
+    </a>
+    <a class="nav-item" data-i18n-title="navStatistics" title="Statistics" href="../pages/statistiques.html">
+      <i class="fa-solid fa-chart-line"></i>
+    </a>
+    <!-- <a class="nav-item" data-i18n-title="navNotifications" title="Notifications" href="../pages/notifications.html">
+      <i class="fa-solid fa-bell"></i>
+    </a> -->
+    <a class="nav-item" data-i18n-title="navRecords" title="Records" href="../pages/records.html">
+      <i class="fa-solid fa-video"></i>
+    </a>
+
+    <div class="sidebar-spacer"></div>
+
+    <!-- <div class="sidebar-dot" title="System Online"></div> -->
+
+    <!-- Language Toggle -->
+    <div class="language-toggle" id="languageToggle" title="Switch to Arabic">
+      <span class="lang-label">EN</span>
     </div>
+
+    <!-- Theme Toggle -->
+    <div class="theme-toggle" id="themeToggle" title="Toggle Light / Dark">
+      <i class="fa-solid fa-sun"></i>
+    </div>
+
+    <a class="nav-item" data-i18n-title="navSettings" title="Settings" href="#">
+      <i class="fa-solid fa-gear"></i>
+    </a>
   </aside>
 
-  <!-- APP BODY -->
+  <!-- ═══ APP BODY ══════════════════════════════════════════ -->
   <div class="app-body">
 
-    <!-- FULL-SCREEN MAP -->
-    <div class="map-wrapper">
-      <div id="map"></div>
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <span class="status-badge" id="status-badge" data-i18n="statusDisconnected">System Disconnected</span>
+      <div class="topbar-sep"></div>
+      <span style="color:var(--muted);font-size:11px;" data-i18n="topbarLabel">Control Center — Dashboard</span>
 
-      <!-- ── HUD TOP BAR ── -->
-      <div class="hud-bar">
-        <!-- Brand & System Status -->
-        <div class="hud-brand">
-          <span class="brand-name">Trafic<span>Cam</span></span>
-          <div class="hud-divider"></div>
-          <span class="status-badge" id="status-badge">
-            <span class="status-dot"></span>Disconnected
-          </span>
+      <div class="topbar-ticker-wrap">
+      
+      <div class="ticker-track">
+        <span class="ticker-content" id="predictionTicker">
+          Expected congestion in Tunis at Habib Bourguiba Roundabout around midday &nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp; Heavy flow predicted on GP1 highway between 17:00 and 19:00 &nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp; Bardo Square intersection likely to reach high density by 08:30
+        </span>
+      </div>
+    </div>
+
+      <div class="topbar-right">
+        <!-- Weather pill -->
+        <div class="weather-display" id="weatherDisplay">
+          <i id="weather-icon" class="fa-solid fa-cloud-sun"></i>
+          <span id="weather-temp">--°C</span>
+          <span id="weather-desc" style="color:var(--muted)">Loading...</span>
         </div>
 
-        <!-- Stat Widgets -->
-        <div class="hud-widgets">
+        <!-- Clock pill -->
+        <div class="clock-display">
+          <span id="live-clock">--:--:--</span>
+        </div>
+      </div>
+    </header>
 
-          <!-- Density Widget -->
-          <div class="hud-widget" id="w-density">
-            <div class="hw-icon cyan"><i class="fa-solid fa-car-side"></i></div>
-            <div class="hw-body">
-              <div class="hw-label">Density <span class="hw-unit">vh/km</span></div>
-              <div class="hw-data" id="vehicle_present"><span class="hw-empty">—</span></div>
-            </div>
-          </div>
+    <!-- STAT STRIP -->
+    <div class="stat-strip">
 
-          <!-- Speed Widget -->
-          <div class="hud-widget" id="w-speed">
-            <div class="hw-icon green"><i class="fa-solid fa-gauge-high"></i></div>
-            <div class="hw-body">
-              <div class="hw-label">Avg Speed <span class="hw-unit">km/h</span></div>
-              <div class="hw-data" id="speeds_container"><span class="hw-empty">—</span></div>
-            </div>
-          </div>
-
-          <!-- Vehicles Widget -->
-          <div class="hud-widget" id="w-vehicles">
-            <div class="hw-icon amber"><i class="fa-solid fa-traffic-light"></i></div>
-            <div class="hw-body">
-              <div class="hw-label">Passed Vehicles</div>
-              <div class="hw-data" id="lanes_container"><span class="hw-empty">—</span></div>
-            </div>
-          </div>
-
-          <!-- Alerts Widget -->
-          <div class="hud-widget" id="w-alerts">
-            <div class="hw-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <div class="hw-body">
-              <div class="hw-label">Jam Alerts</div>
-              <div class="hw-data">
-                <span class="hw-alert-val" id="alerts_container">—</span>
-              </div>
-              <div class="hw-sub" id="alerts-count">
-                <a onclick="viewAllNotifications()" class="hw-link">View all</a>
-              </div>
-            </div>
-          </div>
-
-        </div><!-- end hud-widgets -->
-
-        <!-- Right Cluster: weather + clock -->
-        <div class="hud-right">
-          <div class="weather-pill" id="weatherDisplay">
-            <i id="weather-icon" class="fa-solid fa-cloud-sun"></i>
-            <span id="weather-temp">--°C</span>
-            <span class="hud-divider-v"></span>
-            <span id="weather-desc">—</span>
-          </div>
-          <div class="clock-pill">
-            <i class="fa-regular fa-clock"></i>
-            <span id="live-clock">--:--:--</span>
+      <!-- Density Card -->
+      <div class="stat-card">
+        <div class="stat-icon cyan"><i class="fa-solid fa-car-side"></i></div>
+        <div class="stat-body">
+          <div class="stat-label" data-i18n="densityLabel">Density — vh/km</div>
+          <div class="density-container" id="vehicle_present"></div>
+          <div class="stat-sub" id="density-footer">
+            <span class="up" style="color:var(--green);font-weight:600">25%</span>
+            <span data-i18n="densityFooter"> avg density</span>
           </div>
         </div>
-      </div><!-- end hud-bar -->
-
-      <!-- ── MAP CONTROLS (bottom-left) ── -->
-      <div class="map-controls-bl">
-        <div class="map-pill">
-          <i class="fa-solid fa-circle-dot" style="color:var(--green)"></i>
-          <span>Nodes: <strong id="node-count">—</strong></span>
-        </div>
-        <select class="map-pill map-select" id="governorateSelect">
-          <option value="bardo">Tunis</option>
-          <option value="manouba">Manouba</option>
-          <option value="Carthage">Carthage</option>
-          <option value="ben arous">Ben Arous</option>
-          <option value="nabeul">Nabeul</option>
-          <option value="benzart">Bizerte</option>
-          <option value="sousse">Sousse</option>
-          <option value="sfax">Sfax</option>
-        </select>
       </div>
 
-      <!-- ── NODE PANEL (slides in from right) ── -->
-      <div class="node-panel" id="nodePanel">
-        <div class="np-header">
-          <div>
-            <div class="np-eyebrow">Selected Node</div>
-            <div class="np-title" id="intersection-name">No node selected</div>
+      <!-- AVG Speed Card -->
+      <div class="stat-card">
+        <div class="stat-icon green"><i class="fa-solid fa-gauge-high"></i></div>
+        <div class="stat-body">
+          <div class="stat-label" data-i18n="avgSpeedLabel">AVG Speed — km/h</div>
+          <div class="speed-container" id="speeds_container"></div>
+          <div class="stat-sub" id="flow-footer">
+            <span class="up" style="color:var(--green);font-weight:600">Smooth</span>
+            <span data-i18n="flowFooter"> flow</span>
           </div>
-          <button class="np-close" id="npClose" title="Close panel">
+        </div>
+      </div>
+
+      <!-- Passed Vehicles Card -->
+      <div class="stat-card">
+        <div class="stat-icon yellow"><i class="fa-solid fa-traffic-light"></i></div>
+        <div class="stat-body">
+          <div class="stat-label" data-i18n="passedVehiclesLabel">Passed Vehicles</div>
+          <div class="vehicles-container" id="lanes_container"></div>
+          <div class="stat-sub" id="activity-footer">
+            <span class="crit" style="color:var(--accent2);font-weight:600">Active</span>
+            <span data-i18n="activeAreaFooter"> area today</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Traffic Alerts Card -->
+      <div class="stat-card">
+        <div class="stat-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="stat-body">
+          <div class="stat-label" data-i18n="trafficAlertsLabel">Traffic Jam Alerts</div>
+          <div class="stat-value" id="alerts_container" style="color:var(--accent2);font-size:10px;">—</div>
+          <div class="stat-sub" id="alerts-count">
+            <a onclick="viewAllNotifications()" style="color:var(--accent2);cursor:pointer;text-decoration:none;font-weight:500" data-i18n="viewAll">View all →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORKSPACE -->
+    <div class="workspace">
+
+      <!-- MAP WIDGET -->
+      <div class="map-container">
+        <!-- Widget header replaces floating overlay -->
+    
+        <div class="map-overlay">
+          <div class="map-chip" id="nodeCountChip" style="cursor:pointer;">
+            <i class="fa-solid fa-circle-dot" style="color:var(--green)"></i>
+            <span data-i18n="nodesLabel" style="font-family: 'Inter', sans-serif;font-weight:800;">Nodes:</span> <span class="val" id="node-count">—</span>
+          </div>
+          <select class="map-chip gov-select" id="governorateSelect">
+            <option value="bardo">Tunis</option>
+            <option value="manouba">Manouba</option>
+            <option value="Carthage">Carthage</option>
+            <option value="ben arous">Ben Arous</option>
+            <option value="nabeul">Nabeul</option>
+            <option value="benzart">Benzart</option>
+            <option value="sousse">Sousse</option>
+            <option value="sfax">Sfax</option>
+          </select>
+        </div>
+
+        <!-- Leaflet map fills the rest -->
+        <div id="map"></div>
+
+        <!-- NODE DRAWER -->
+        <div class="node-drawer" id="nodeDrawer">
+          <div class="nd-handle">
+            <i class="fa-solid fa-layer-group nd-icon"></i>
+            <span>Active Operations Nodes</span>
+            <i class="fa-solid fa-xmark" id="ndClose" style="font-size:13px;color:var(--muted);cursor:pointer;"></i>
+          </div>
+          <div class="nd-content">
+            <div class="nd-search-wrap">
+              <i class="fa-solid fa-magnifying-glass nd-search-icon"></i>
+              <input type="text" class="nd-search" id="ndSearch" placeholder="Search node or ID…">
+            </div>
+            <div class="nd-list" id="ndList"></div>
+          </div>
+        </div>
+
+        <!-- Legend badges (bottom-left of map) -->
+        <div class="map-legend">
+          <span class="map-badge green"><i class="fa-solid fa-circle" style="font-size:6px"></i> Clear</span>
+          <span class="map-badge red"><i class="fa-solid fa-circle" style="font-size:6px"></i> Alert</span>
+        </div>
+      </div>
+
+      <!-- SIDE PANEL -->
+      <div class="side-panel">
+
+        <!-- Node detail widget -->
+        <div class="panel-widget">
+          <div class="panel-head">
+            <div class="panel-head-label" data-i18n="selectedNode">Selected Node</div>
+            <div class="panel-head-title" id="intersection-name">Select a node</div>
+          </div>
+
+          <div class="detail-row">
+            <div class="detail-icon-wrap"><i class="fa-solid fa-video"></i></div>
+            <div class="detail-info">
+              <div class="detail-info-label" data-i18n="camerasLabel">Cameras</div>
+              <div class="detail-info-value" id="cam-number">—</div>
+            </div>
+          </div>
+
+          <div class="detail-row">
+            <div class="detail-icon-wrap"><i class="fa-solid fa-road"></i></div>
+            <div class="detail-info">
+              <div class="detail-info-label" data-i18n="lanesLabel">Lanes</div>
+              <div class="detail-info-value" id="lanes-number">—</div>
+            </div>
+          </div>
+
+          <div class="detail-row">
+            <div class="detail-icon-wrap"><i class="fa-solid fa-gauge"></i></div>
+            <div class="detail-info">
+              <div class="detail-info-label" data-i18n="locationLabel">Capcity</div>
+              <div class="detail-info-value" id="capacity">—</div>
+            </div>
+          </div>
+
+          <div class="panel-actions">
+            <button class="btn-action btn-stream" data-bs-toggle="modal" data-bs-target="#streamModal" data-i18n="streamBtn" id="openModalBtn">
+              <i class="fa-solid fa-play" style="font-size:10px"></i>
+              <span>Stream</span>
+            </button>
+            <button class="btn-action btn-stats" data-bs-toggle="modal" data-bs-target="#chartModal" data-i18n="statsBtn">
+              <i class="fa-solid fa-chart-bar" style="font-size:10px"></i>
+              <span>Stats</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Stream widget -->
+      <div class="alert-widget" id="alert-widget" style="cursor:pointer;padding:0;overflow:hidden;display:flex;flex-direction:column;">
+        <div class="alert-widget-header" style="padding:5px 12px;flex-shrink:0;">
+          <i class="fa-solid fa-circle" style="color:var(--accent2);margin-right:5px;font-size:7px;vertical-align:middle;animation:pulse 1.5s infinite;"></i>
+          <span>Live Stream</span>
+        </div>
+        <div id="alert-list" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div>
+      </div>
+
+        <!-- Network overview widget -->
+        <!-- <div class="node-widget">
+          <div class="node-widget-header">
+            <i class="fa-solid fa-circle-dot" style="color:var(--green);margin-right:5px"></i>
+            <span data-i18n="networkOverview">Network Overview</span>
+          </div>
+          <div class="node-grid">
+            <div class="node-mini">
+              <div class="node-mini-val" id="overview-total" style="color:var(--accent)">—</div>
+              <div class="node-mini-lbl" data-i18n="totalNodes">Total Nodes</div>
+            </div>
+            <div class="node-mini">
+              <div class="node-mini-val" id="overview-online" style="color:var(--green)">—</div>
+              <div class="node-mini-lbl" data-i18n="onlineNodes">Online</div>
+            </div>
+            <div class="node-mini">
+              <div class="node-mini-val" id="overview-alerts" style="color:var(--accent2)">—</div>
+              <div class="node-mini-lbl" data-i18n="alertNodes">Alerts</div>
+            </div>
+            <div class="node-mini">
+              <div class="node-mini-val" id="overview-cameras" style="color:var(--accent3)">—</div>
+              <div class="node-mini-lbl" data-i18n="totalCameras">Cameras</div>
+            </div>
+          </div>
+        </div> -->
+
+      </div><!-- /side-panel -->
+    </div><!-- /workspace -->
+  </div><!-- /app-body -->
+
+
+  <!-- ═══ STREAM MODAL ══════════════════════════════════════ -->
+  <div class="modal fade" id="streamModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h6 data-i18n="liveStream">Live Stream</h6>
+            <p id="stream_intersection_name" data-i18n="selectIntersection">— Select an intersection</p>
+          </div>
+          <button class="btn-close-custom" data-bs-dismiss="modal" aria-label="Close">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
-
-        <div class="np-body">
-          <div class="np-row">
-            <div class="np-icon-wrap"><i class="fa-solid fa-video"></i></div>
-            <div class="np-info">
-              <div class="np-info-label">Cameras</div>
-              <div class="np-info-val" id="cam-number">—</div>
-            </div>
-          </div>
-          <div class="np-row">
-            <div class="np-icon-wrap"><i class="fa-solid fa-road"></i></div>
-            <div class="np-info">
-              <div class="np-info-label">Lanes</div>
-              <div class="np-info-val" id="lanes-number">—</div>
-            </div>
-          </div>
-          <div class="np-row">
-            <div class="np-icon-wrap"><i class="fa-solid fa-gauge"></i></div>
-            <div class="np-info">
-              <div class="np-info-label">Capacity</div>
-              <div class="np-info-val" id="capacity">—</div>
-            </div>
-          </div>
-          <div class="np-row">
-            <div class="np-icon-wrap" style="color:var(--green)"><i class="fa-solid fa-chart-bar"></i></div>
-            <div class="np-info">
-              <div class="np-info-label">Current Density</div>
-              <div class="np-info-val" id="node-density">—</div>
-            </div>
-          </div>
-          <div class="np-row">
-            <div class="np-icon-wrap" style="color:var(--amber)"><i class="fa-solid fa-car-burst"></i></div>
-            <div class="np-info">
-              <div class="np-info-label">Status</div>
-              <div class="np-info-val" id="node-status">—</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="np-actions">
-          <button class="npa-btn npa-stream" id="openModalBtn">
-            <i class="fa-solid fa-circle-play"></i> Live Stream
-          </button>
-          <button class="npa-btn npa-stats" id="openStatsModalBtn" data-bs-toggle="modal" data-bs-target="#chartModal">
-            <i class="fa-solid fa-chart-line"></i> Statistics
-          </button>
-        </div>
-      </div>
-
-      <!-- ── NODE LIST DRAWER (slides up from bottom) ── -->
-      <div class="node-drawer" id="nodeDrawer">
-        <div class="nd-handle" id="ndHandle" title="Toggle node list">
-          <i class="fa-solid fa-layer-group"></i>
-          <span>All Nodes</span>
-          <i class="fa-solid fa-chevron-up nd-arrow" id="ndArrow"></i>
-        </div>
-        <div class="nd-content" id="ndContent">
-          <div class="nd-search-wrap">
-            <i class="fa-solid fa-magnifying-glass nd-search-icon"></i>
-            <input type="text" class="nd-search" id="ndSearch" placeholder="Search node or address…">
-          </div>
-          <div class="nd-list" id="ndList">
-            <div class="nd-empty">No nodes registered yet.</div>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- end map-wrapper -->
-  </div><!-- end app-body -->
-
-  <!-- ═══════════════════════════════════════
-       STREAM MODAL
-  ═══════════════════════════════════════ -->
-  <div class="modal fade" id="streamModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-      <div class="modal-content tc-modal">
-        <div class="tc-modal-header">
-          <div>
-            <div class="tc-modal-eyebrow">Live Stream</div>
-            <div class="tc-modal-title" id="stream_intersection_name">— Select a node</div>
-          </div>
-          <button class="tc-close" data-bs-dismiss="modal"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div class="tc-modal-body">
-          <!-- Inactive Node Warning -->
-          <div class="stream-blocked" id="streamBlocked" style="display:none;">
-            <i class="fa-solid fa-video-slash"></i>
-            <div class="sb-title">Node Offline</div>
-            <div class="sb-desc">Live stream is only available when the node is actively transmitting data. Please wait for the node to reconnect.</div>
-          </div>
-          <!-- Active Stream Content -->
-          <div id="streamActive">
-            <select id="cameraSelector" class="tc-select">
-              <option value="" disabled selected>Select a camera</option>
+        <div class="modal-body">
+          <div style="display:flex;align-items:center; justify-content:space-between;">
+              <select id="cameraSelector" class="cam-select">
+            <option value="" disabled selected data-i18n="selectCameraPrompt">Select a camera</option>
             </select>
-            <div class="ratio ratio-16x9" style="margin-top:12px;">
-              <iframe src="" title="Stream Preview" allowfullscreen id="streamFrame" style="border-radius:8px; border:1px solid var(--border);"></iframe>
+            <div style="margin-top:10px;margin-bottom:8px;">
+              <button id="recordsModalBtn" data-i18n="recordsBtn">Records</button>
             </div>
+          </div>
+          
+          <div class="ratio ratio-16x9">
+            <iframe src="" title="Stream Preview" allowfullscreen id="streamFrame"
+              style="border-radius:8px;border:1px solid var(--border);"></iframe>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════
-       STATS MODAL
-  ═══════════════════════════════════════ -->
+  <!-- ═══ STATS MODAL ═══════════════════════════════════════ -->
   <div class="modal fade" id="chartModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
-      <div class="modal-content tc-modal">
-        <div class="tc-modal-header">
-          <div>
-            <div class="tc-modal-eyebrow">Traffic Statistics</div>
-            <div class="tc-modal-title" id="stats_stream_intersection_name">— Select a node</div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h6 data-i18n="trafficStatistics">Traffic Statistics</h6>
+            <p id="stats_stream_intersection_name" data-i18n="selectIntersection">— Select an intersection</p>
           </div>
-          <button class="tc-close" data-bs-dismiss="modal"><i class="fa-solid fa-xmark"></i></button>
+          <button class="btn-close-custom" data-bs-dismiss="modal">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
-        <div class="tc-modal-body">
-          <div class="chart-header">
-            <div class="chart-title">Daily Traffic</div>
-            <div class="chart-sub">Median daily density — last 7 days</div>
+        <div class="modal-body">
+          <div style="margin-bottom:10px;">
+            <div style="font-family:var(--font-display);font-size:14px;font-weight:700;margin-bottom:3px;" data-i18n="dailyTraffic">Daily Traffic</div>
+            <div style="font-size:11px;color:var(--muted);" data-i18n="averageDailyDensity">Average daily density — last 7 days</div>
           </div>
-          <div class="chart-placeholder">
-            <i class="fa-solid fa-chart-bar"></i>
-            Chart renders here
+          <canvas id="chart-bars" style="width:100%;height:280px;"></canvas>
+          <div style="margin-top:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;" data-i18n="lastUpdated">
+            <i class="fa-solid fa-clock"></i> Last updated: just now
           </div>
-          <div class="chart-footer"><i class="fa-solid fa-clock"></i> Last updated: just now</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════
-       TOASTS
-  ═══════════════════════════════════════ -->
-  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 9999;">
-    <div id="nodeToast" class="toast tc-toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="8000">
+  <!-- ═══ TOASTS ════════════════════════════════════════════ -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+
+    <!-- Node Notification Toast -->
+    <div id="nodeToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="8000">
       <div class="toast-header">
-        <i class="fa-solid fa-circle-plus me-2" style="color:var(--green)"></i>
+        <i class="fa-solid fa-circle-plus me-2"></i>
         <strong class="me-auto">New Node</strong>
         <small class="text-muted">just now</small>
         <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
       </div>
       <div class="toast-body"></div>
     </div>
-    <div id="dangerToast" class="toast tc-toast tc-toast-danger" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="7000">
+
+    <!-- Traffic Alert Toast -->
+    <div id="dangerToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="7000">
       <div class="toast-header">
         <i class="fa-solid fa-triangle-exclamation me-2"></i>
         <strong class="me-auto">Traffic Alert</strong>
@@ -307,11 +376,10 @@
       </div>
       <div class="toast-body"></div>
     </div>
+
   </div>
 
-  <!-- Hidden fields (kept for JS compatibility) -->
-  <span id="stream_intersection_name" style="display:none;"></span>
-
+  <!-- Scripts -->
   <script src="../js/my_scripts/theme.js"></script>
   <script src="../js/my_scripts/map_v3.js"></script>
 

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Records • TraficCam</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="../css/my_css/main_style.css" />
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+   RECORDS PAGE  —  append to main_style.css
+   ═══════════════════════════════════════════════════════════ */
+
+/* Workspace */
+.rec-workspace {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+  gap: 10px;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+
+/* ── Two-column layout ──────────────────────────────────── */
+.rec-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rec-right {
+  width: 290px;
+  min-width: 290px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+/* ── Player widget ──────────────────────────────────────── */
+.rec-player-widget {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.rec-player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rec-player-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rec-player-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rec-select {
+  margin-bottom: 0 !important;
+  width: auto !important;
+  min-width: 160px;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+/* ── Video area ─────────────────────────────────────────── */
+.rec-video-wrap {
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-video-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  position: absolute;
+  inset: 0;
+}
+
+/* ── Meta bar ───────────────────────────────────────────── */
+.rec-meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.rec-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Incident banner ────────────────────────────────────── */
+.rec-incident-banner {
+  display: flex;
+  align-items: center;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.dark .rec-incident-banner {
+  background: rgba(230,57,86,0.12);
+  border-color: rgba(230,57,86,0.3);
+}
+
+.rec-incident-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent2);
+}
+
+.rec-incident-inner i { font-size: 14px; }
+
+/* ── Right panel: chart widgets ─────────────────────────── */
+.rec-chart-widget {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.rec-chart-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.rec-chart-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.rec-chart-widget canvas {
+  width: 100% !important;
+  height: 130px !important;
+}
+
+/* ── Event pills grid ───────────────────────────────────── */
+.rec-event-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.rec-event-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.rec-event-pill i { font-size: 12px; width: 14px; flex-shrink: 0; }
+
+.rec-event-pill span:nth-child(2) {
+  flex: 1;
+  color: var(--text);
+}
+
+.rec-event-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+
+/* Detected state — green */
+.rec-event-detected {
+  background: rgba(22,163,74,0.07);
+  border-color: rgba(22,163,74,0.22);
+}
+.rec-event-detected i { color: var(--green); }
+.rec-event-detected .rec-event-badge {
+  background: rgba(22,163,74,0.15);
+  color: var(--green);
+}
+
+/* Not detected — muted */
+.rec-event-none {
+  background: var(--surface2);
+}
+.rec-event-none i { color: var(--muted); opacity: 0.5; }
+.rec-event-none .rec-event-badge {
+  background: rgba(148,163,184,0.12);
+  color: var(--muted);
+}
+
+.dark .rec-event-detected {
+  background: rgba(0,196,140,0.08);
+  border-color: rgba(0,196,140,0.2);
+}
+  </style>
+</head>
+<body>
+
+  <!-- ═══ SIDEBAR ══════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img id="logo_img" src="../img/logo_dark_theme.png" width="28" height="28" alt="TraficCam logo">
+    </div>
+    <a class="nav-item" title="Dashboard" href="../pages/dashboard.html"><i class="fa-solid fa-table-cells-large"></i></a>
+    <a class="nav-item" title="Database"  href="../pages/tables.html"><i class="fa-solid fa-database"></i></a>
+    <a class="nav-item" title="Statistics" href="../pages/statistiques.html"><i class="fa-solid fa-chart-line"></i></a>
+    <a class="nav-item active" title="Records" href="../pages/records.html"><i class="fa-solid fa-video"></i></a>
+    <div class="sidebar-spacer"></div>
+    <div class="language-toggle" id="languageToggle"><span class="lang-label">EN</span></div>
+    <div class="theme-toggle" id="themeToggle"><i class="fa-solid fa-sun"></i></div>
+    <a class="nav-item" title="Settings" href="#"><i class="fa-solid fa-gear"></i></a>
+  </aside>
+
+  <!-- ═══ APP BODY ═════════════════════════════════════════ -->
+  <div class="app-body">
+
+    <header class="topbar">
+      <span class="status-badge">Recorded Streams</span>
+      <div class="topbar-sep"></div>
+      <span style="color:var(--muted);font-size:11px;">Control Center — Records</span>
+      <div class="topbar-right">
+        <div class="clock-display"><span id="live-clock">--:--:--</span></div>
+      </div>
+    </header>
+
+    <!-- ═══ WORKSPACE ════════════════════════════════════════ -->
+    <div class="workspace rec-workspace">
+
+      <!-- ── LEFT COLUMN ───────────────────────────────────── -->
+      <div class="rec-left">
+
+        <!-- Player widget -->
+        <div class="rec-player-widget">
+
+          <!-- Header: node + recording selectors -->
+          <div class="rec-player-head">
+            <div class="rec-player-head-left">
+              <div class="stat-icon cyan" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">
+                <i class="fa-solid fa-film"></i>
+              </div>
+              <div>
+                <div class="panel-head-label">Recording Playback</div>
+                <div class="panel-head-title" id="rec-node-name" style="font-size:13px;">Select a node</div>
+              </div>
+            </div>
+            <div class="rec-player-head-right">
+              <select id="recNodeSelect"      class="gov-select rec-select" style="margin-bottom:0;">
+                <option value="" disabled selected>Node…</option>
+              </select>
+              <select id="recRecordingSelect" class="gov-select rec-select" style="margin-bottom:0;" disabled>
+                <option value="" disabled selected>Recording…</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Video -->
+          <div class="rec-video-wrap" id="recVideoWrap">
+            <div class="rec-video-empty" id="recEmpty">
+              <i class="fa-solid fa-circle-play" style="font-size:44px;color:var(--muted);margin-bottom:14px;"></i>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">No recording selected</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:5px;">Choose a node, then pick a recording</div>
+            </div>
+          </div>
+
+          <!-- Meta bar -->
+          <div class="rec-meta-bar">
+            <div class="rec-meta-item">
+              <i class="fa-solid fa-circle" id="recStatusDot" style="font-size:7px;color:var(--muted);"></i>
+              <span id="recStatusLabel">No recording loaded</span>
+            </div>
+            <div class="rec-meta-item">
+              <i class="fa-solid fa-calendar" style="color:var(--muted);"></i>
+              <span id="recDateLabel">—</span>
+            </div>
+            <div class="rec-meta-item">
+              <i class="fa-solid fa-clock" style="color:var(--muted);"></i>
+              <span id="recDurLabel">—</span>
+            </div>
+            <div class="rec-meta-item" style="margin-left:auto;">
+              <i class="fa-solid fa-microchip" style="color:var(--muted);"></i>
+              <span id="recNodeIdLabel">Node —</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Incident banner (hidden by default) -->
+        <div class="rec-incident-banner" id="recIncidentBanner" style="display:none;">
+          <div class="rec-incident-inner">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span id="recIncidentText">Incident detected in this recording</span>
+          </div>
+        </div>
+
+      </div><!-- /rec-left -->
+
+      <!-- ── RIGHT PANEL ───────────────────────────────────── -->
+      <div class="rec-right">
+
+        <!-- 1. Vehicle type breakdown -->
+        <div class="rec-chart-widget">
+          <div class="rec-chart-head">
+            <div class="stat-icon cyan" style="width:28px;height:28px;font-size:11px;"><i class="fa-solid fa-car-side"></i></div>
+            <div>
+              <div class="panel-head-label">Vehicle Types</div>
+              <div class="rec-chart-subtitle">Detected across recording</div>
+            </div>
+          </div>
+          <canvas id="chartVehicleTypes"></canvas>
+        </div>
+
+        <!-- 2. Car colours -->
+        <div class="rec-chart-widget">
+          <div class="rec-chart-head">
+            <div class="stat-icon yellow" style="width:28px;height:28px;font-size:11px;"><i class="fa-solid fa-palette"></i></div>
+            <div>
+              <div class="panel-head-label">Vehicle Colours</div>
+              <div class="rec-chart-subtitle">Distribution by colour</div>
+            </div>
+          </div>
+          <canvas id="chartColours"></canvas>
+        </div>
+
+        <!-- 3. Special vehicles & events -->
+        <div class="rec-chart-widget">
+          <div class="rec-chart-head">
+            <div class="stat-icon red" style="width:28px;height:28px;font-size:11px;"><i class="fa-solid fa-shield-halved"></i></div>
+            <div>
+              <div class="panel-head-label">Events & Special Vehicles</div>
+              <div class="rec-chart-subtitle">Flags raised during recording</div>
+            </div>
+          </div>
+          <!-- Event pills grid -->
+          <div class="rec-event-grid" id="recEventGrid">
+            <!-- populated by JS -->
+          </div>
+        </div>
+
+      </div><!-- /rec-right -->
+
+    </div><!-- /workspace -->
+  </div><!-- /app-body -->
+
+  <script src="../js/my_scripts/theme.js"></script>
+  <script src="../js/my_scripts/records.js"></script>
+</body>
+</html>

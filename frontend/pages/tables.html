@@ -22,6 +22,38 @@
 
   <!-- Custom CSS -->
   <link rel="stylesheet" href="../css/my_css/main_style.css" />
+
+  <style>
+      .search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-wrapper input {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 7px 14px 7px 36px;
+    font-size: 13px;
+    width: 220px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .search-wrapper input:focus {
+    border-color: var(--accent);
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 11px;
+    color: var(--muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
+  </style>
 </head>
 
 <body>
@@ -73,7 +105,7 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
           <div class="d-flex align-items-center gap-3">
             <select id="governorateSelect" class="gov-select">
-              <option selected>Tunis</option>
+              <option selected value="Tunis">Tunis</option>
               <option value="Manouba">Manouba</option>
               <option value="Ben Arous">Ben Arous</option>
               <option value="Nabeul">Nabeul</option>
@@ -84,6 +116,10 @@
             <button id="filterBtn" class="btn-action btn-stats">
               <i class="fas fa-filter"></i> Filter
             </button>
+            <div class="search-wrapper">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" id="addressSearch" placeholder="Search by address…" autocomplete="off">
+            </div>
           </div>
           
           <div class="d-flex gap-2">

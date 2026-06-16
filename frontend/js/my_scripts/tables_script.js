@@ -235,4 +235,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }
     });
+    const addressSearch = document.getElementById('addressSearch');
+
+    addressSearch.addEventListener('input', function () {
+        const query = this.value.toLowerCase().trim();
+        tableBody.querySelectorAll('tr').forEach(row => {
+            const address = (row.dataset.address || '').toLowerCase();
+            row.style.display = address.includes(query) ? '' : 'none';
+        });
+        selectedIntersection = null;
+        deleteBtn.disabled = true;
+        editBtn.disabled = true;
+    });
 });
+
+
